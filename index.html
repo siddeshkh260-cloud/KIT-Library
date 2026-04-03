@@ -30,13 +30,12 @@
   //  Firebase Console → Project Settings → Your Apps → Web App
   // ════════════════════════════════════════════════════════════
   const firebaseConfig = {
-    apiKey: FIREBASE_API_KEY,
-  authDomain: "library-5015d.firebaseapp.com",
-  projectId: "library-5015d",
-  storageBucket: "library-5015d.firebasestorage.app",
-  messagingSenderId: "25135880670",
-  appId: "1:25135880670:web:0885d13d72ee38061ae54f",
-  
+    apiKey: "FIREBASE_API_KEY",
+    authDomain: "library-5015d.firebaseapp.com",
+    projectId: "library-5015d",
+    storageBucket: "library-5015d.firebasestorage.app",
+    messagingSenderId: "25135880670",
+    appId: "1:25135880670:web:0885d13d72ee38061ae54f"
   };
 
   const app  = initializeApp(firebaseConfig);
@@ -50,7 +49,7 @@
     signOut, updateProfile, signInWithPopup,
     sendPasswordResetEmail,
     doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc
-  };   
+  };
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -274,10 +273,9 @@ header {
   padding:7px 14px; border:1.5px solid rgba(255,255,255,0.25); border-radius:8px;
   background:transparent; color:rgba(255,255,255,0.75); font-family:'DM Sans',sans-serif;
   font-size:0.78rem; font-weight:500; cursor:pointer; transition:all 0.2s;
-  display:none; align-items:center; gap:6px; white-space:nowrap;
+  display:flex; align-items:center; gap:6px; white-space:nowrap;
 }
-.install-btn:hover { background:rgba(255,255,255,0.1); color:white; border-color:rgba(255,255,255,0.5); }
-.install-btn.visible { display:flex; }
+.install-btn:hover { background:rgba(255,255,255,0.12); color:white; border-color:rgba(255,255,255,0.5); }
 
 /* ── MAIN ── */
 main { padding:36px 40px; max-width:1300px; margin:0 auto; }
@@ -441,6 +439,31 @@ td.actions-cell { white-space:nowrap; }
 .pwa-prompt-text { flex:1; font-size:0.85rem; }
 .pwa-prompt-title { font-weight:700; margin-bottom:2px; }
 .pwa-prompt-sub { color:#aaa; font-size:0.75rem; }
+
+/* Install Guide Modal */
+.ig-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9000; }
+.ig-modal {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:white; border-radius:20px; width:480px; max-width:95vw;
+  box-shadow:0 24px 80px rgba(0,0,0,0.3); z-index:9001; overflow:hidden;
+  animation:slideUp 0.3s ease;
+}
+.ig-header {
+  background:linear-gradient(135deg,var(--ink),#2c3e6b);
+  padding:20px 24px; display:flex; align-items:center; justify-content:space-between;
+}
+.ig-title { color:white; font-family:'Playfair Display',serif; font-size:1.2rem; }
+.ig-sub { color:#aaa; font-size:0.75rem; margin-top:2px; }
+.ig-close { background:none; border:none; color:#aaa; font-size:1.6rem; cursor:pointer; line-height:1; padding:0 4px; }
+.ig-close:hover { color:white; }
+.ig-body { padding:22px 24px 24px; }
+.ig-tabs { display:flex; background:var(--cream); border-radius:10px; padding:4px; gap:4px; margin-bottom:18px; }
+.ig-tab { flex:1; padding:8px; text-align:center; border:none; background:transparent; border-radius:7px; font-family:'DM Sans',sans-serif; font-size:0.85rem; font-weight:500; cursor:pointer; color:var(--muted); transition:all 0.2s; }
+.ig-tab.active { background:white; color:var(--ink); box-shadow:0 1px 4px rgba(0,0,0,0.1); }
+.ig-step { display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; font-size:0.85rem; line-height:1.5; }
+.ig-icon { background:var(--ink); color:white; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; margin-top:1px; }
+.ig-note { background:#fff8e1; border:1px solid #ffe082; border-radius:8px; padding:10px 14px; font-size:0.78rem; color:#6d4c41; margin-top:12px; line-height:1.5; }
+.ig-browser-note { background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; padding:12px 14px; font-size:0.82rem; color:#1565c0; margin-bottom:14px; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -573,9 +596,9 @@ td.actions-cell { white-space:nowrap; }
   </div>
 
   <div class="header-right">
-    <!-- Install as App button -->
-    <button class="install-btn" id="installBtn" onclick="installPWA()">
-      ⬇️ Install App
+    <!-- Install as App button (always visible) -->
+    <button class="install-btn visible" id="installBtn" onclick="installPWA()">
+      ⬇️ Get App
     </button>
 
     <!-- Role badge -->
@@ -864,10 +887,25 @@ let editingId = null;
 let myIssuedBookIds = new Set();
 let selectedRole = 'student'; // current selection on auth screen
 
-// ══════════ PWA SETUP ══════════
+// ══════════ PWA / DOWNLOAD SETUP ══════════
 let deferredInstallPrompt = null;
 
-// Generate and inject PWA manifest dynamically
+// ── Detect browser & OS ──
+function getBrowserInfo() {
+  const ua = navigator.userAgent;
+  const isIOS = /iphone|ipad|ipod/i.test(ua);
+  const isMac = /macintosh/i.test(ua) && !isIOS;
+  const isWindows = /windows/i.test(ua);
+  const isAndroid = /android/i.test(ua);
+  const isChrome = /chrome/i.test(ua) && !/edge|edg\//i.test(ua);
+  const isEdge = /edge|edg\//i.test(ua);
+  const isFirefox = /firefox/i.test(ua);
+  const isSafari = /safari/i.test(ua) && !isChrome && !isEdge;
+  const isMobile = isIOS || isAndroid;
+  return { isIOS, isMac, isWindows, isAndroid, isChrome, isEdge, isFirefox, isSafari, isMobile };
+}
+
+// ── Inject Web App Manifest via blob ──
 (function injectManifest() {
   const manifest = {
     name: "KIT Library",
@@ -877,60 +915,193 @@ let deferredInstallPrompt = null;
     display: "standalone",
     background_color: "#f7f4ef",
     theme_color: "#1a1a2e",
-    orientation: "portrait-primary",
     icons: [
-      { src: "https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png", sizes: "192x192", type: "image/png" },
-      { src: "https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png", sizes: "512x512", type: "image/png" }
-    ]
+      { src: "https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+      { src: "https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+    ],
+    screenshots: [],
+    categories: ["education", "productivity"]
   };
-  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  document.getElementById('manifestLink').href = url;
+  try {
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+    document.getElementById('manifestLink').href = URL.createObjectURL(blob);
+  } catch(e) {}
 })();
 
-// Register Service Worker for PWA offline
-if ('serviceWorker' in navigator) {
-  const swCode = `
-    const CACHE = 'kit-lib-v1';
-    const ASSETS = ['./', './index.html'];
-    self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(()=>{}))));
-    self.addEventListener('fetch', e => e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('./')))
-    ));
-  `;
-  const blob = new Blob([swCode], { type: 'application/javascript' });
-  const swUrl = URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swUrl).catch(() => {});
-}
-
+// ── beforeinstallprompt (Chrome/Edge desktop & Android Chrome) ──
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
+  // Show install button regardless of device
   document.getElementById('installBtn').classList.add('visible');
-  document.getElementById('pwaPrompt').classList.add('show');
+  // Only show bottom prompt on mobile (desktop has the header button)
+  if (getBrowserInfo().isMobile) {
+    document.getElementById('pwaPrompt').classList.add('show');
+  }
 });
 
 window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
   document.getElementById('installBtn').classList.remove('visible');
   document.getElementById('pwaPrompt').classList.remove('show');
-  showToast('✅ KIT Library installed successfully!');
+  showToast('✅ KIT Library installed as an app!');
 });
 
+// ── Always show install button after load (fallback for all browsers) ──
+window.addEventListener('load', () => {
+  // Always show install button — it handles all cases internally
+  setTimeout(() => {
+    document.getElementById('installBtn').classList.add('visible');
+  }, 1500);
+});
+
+// ── Main install function — smart per-browser logic ──
 function installPWA() {
-  if (!deferredInstallPrompt) {
-    showToast('💡 To install: use your browser menu → "Add to Home Screen"');
+  const info = getBrowserInfo();
+
+  // Case 1: Native prompt available (Android Chrome, desktop Chrome/Edge on HTTPS)
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then(r => {
+      if (r.outcome === 'accepted') showToast('📱 Installing KIT Library…');
+      deferredInstallPrompt = null;
+      document.getElementById('pwaPrompt').classList.remove('show');
+    });
     return;
   }
-  deferredInstallPrompt.prompt();
-  deferredInstallPrompt.userChoice.then(r => {
-    if (r.outcome === 'accepted') showToast('📱 Installing KIT Library…');
-    deferredInstallPrompt = null;
-    document.getElementById('pwaPrompt').classList.remove('show');
-  });
+
+  // Case 2: iOS Safari — must use Share > Add to Home Screen
+  if (info.isIOS) {
+    showInstallGuide('ios');
+    return;
+  }
+
+  // Case 3: Desktop — offer file download + browser instructions
+  showInstallGuide('desktop', info);
 }
 
 function dismissPWA() {
   document.getElementById('pwaPrompt').classList.remove('show');
+}
+
+// ── Install Guide Modal ──
+function showInstallGuide(type, info) {
+  // Remove any existing guide
+  document.getElementById('installGuide')?.remove();
+
+  let content = '';
+
+  if (type === 'ios') {
+    content = `
+      <div class="ig-step"><span class="ig-icon">1</span><div>Tap the <strong>Share</strong> button <span style="font-size:1.2rem">⬆️</span> at the bottom of Safari</div></div>
+      <div class="ig-step"><span class="ig-icon">2</span><div>Scroll down and tap <strong>"Add to Home Screen"</strong></div></div>
+      <div class="ig-step"><span class="ig-icon">3</span><div>Tap <strong>"Add"</strong> in the top right corner</div></div>
+      <div class="ig-note">📌 KIT Library will appear as an app icon on your home screen.</div>
+    `;
+  } else {
+    // Detect which desktop browser
+    const browserName = info?.isEdge ? 'Microsoft Edge' : info?.isFirefox ? 'Firefox' : info?.isSafari ? 'Safari' : 'Chrome';
+    const isEdge = info?.isEdge;
+    const isFirefox = info?.isFirefox;
+    const isSafari = info?.isSafari;
+
+    let browserSteps = '';
+    if (isFirefox || isSafari) {
+      // These don't support PWA install — offer HTML download
+      browserSteps = `
+        <div class="ig-browser-note">
+          <strong>${browserName}</strong> doesn't support installing web apps directly.<br>
+          Use <strong>Chrome</strong> or <strong>Edge</strong> to install it as an app, or download the file below.
+        </div>
+      `;
+    } else if (isEdge) {
+      browserSteps = `
+        <div class="ig-step"><span class="ig-icon">1</span><div>Look for the <strong>install icon</strong> <span style="font-size:1.1rem">⊕</span> in the address bar (right side)</div></div>
+        <div class="ig-step"><span class="ig-icon">2</span><div>Click it and select <strong>"Install"</strong></div></div>
+        <div class="ig-step"><span class="ig-icon">3</span><div>Or go to <strong>⋯ Menu → Apps → Install this site as an app</strong></div></div>
+      `;
+    } else {
+      // Chrome desktop
+      browserSteps = `
+        <div class="ig-step"><span class="ig-icon">1</span><div>Look for the <strong>install icon</strong> <span style="font-size:1.1rem">⊕</span> in the address bar (right side)</div></div>
+        <div class="ig-step"><span class="ig-icon">2</span><div>Click it and select <strong>"Install KIT Library"</strong></div></div>
+        <div class="ig-step"><span class="ig-icon">3</span><div>Or go to <strong>⋮ Menu → Cast, Save, and Share → Install page as app</strong></div></div>
+      `;
+    }
+
+    content = `
+      <div class="ig-tabs">
+        <button class="ig-tab active" onclick="igTab('browser',this)">🌐 Install in Browser</button>
+        <button class="ig-tab" onclick="igTab('download',this)">💾 Save as File</button>
+      </div>
+
+      <div id="igBrowser">
+        <p style="font-size:0.82rem;color:var(--muted);margin-bottom:14px;">
+          Install as a desktop app — works offline, opens like a native app.
+          <strong>Requires the page to be opened from a web server (HTTPS).</strong>
+        </p>
+        ${browserSteps}
+        <div class="ig-note">💡 If you opened this as a local file, host it on Firebase Hosting, Netlify, or GitHub Pages first to enable browser install.</div>
+      </div>
+
+      <div id="igDownload" style="display:none">
+        <p style="font-size:0.82rem;color:var(--muted);margin-bottom:16px;">
+          Save the full app as a single HTML file on your computer. Open it anytime in any browser — no internet needed for the UI.
+        </p>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;margin-bottom:10px" onclick="downloadHTMLFile()">
+          ⬇️ Download kit_library.html
+        </button>
+        <div class="ig-step" style="margin-top:8px"><span class="ig-icon">→</span><div>After downloading, open the file in <strong>Chrome</strong> or <strong>Edge</strong> and it will offer to install it as an app</div></div>
+        <div class="ig-note" style="margin-top:10px">📁 The file includes all 112 books, the full UI, and Firebase integration.</div>
+      </div>
+    `;
+  }
+
+  const guide = document.createElement('div');
+  guide.id = 'installGuide';
+  guide.innerHTML = `
+    <div class="ig-overlay" onclick="closeInstallGuide()"></div>
+    <div class="ig-modal">
+      <div class="ig-header">
+        <div>
+          <div class="ig-title">📱 Install KIT Library</div>
+          <div class="ig-sub">Get the app on your device</div>
+        </div>
+        <button class="ig-close" onclick="closeInstallGuide()">×</button>
+      </div>
+      <div class="ig-body">${content}</div>
+    </div>
+  `;
+  document.body.appendChild(guide);
+}
+
+function igTab(tab, btn) {
+  document.querySelectorAll('.ig-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('igBrowser').style.display = tab === 'browser' ? 'block' : 'none';
+  document.getElementById('igDownload').style.display = tab === 'download' ? 'block' : 'none';
+}
+
+function closeInstallGuide() {
+  document.getElementById('installGuide')?.remove();
+}
+
+// ── Download the current page as a standalone HTML file ──
+function downloadHTMLFile() {
+  try {
+    const html = document.documentElement.outerHTML;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'kit_library.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    showToast('✅ Download started! Open the file in Chrome or Edge.');
+  } catch(e) {
+    showToast('Download failed: ' + e.message);
+  }
 }
 
 // ══════════ ROLE SELECTION ══════════
