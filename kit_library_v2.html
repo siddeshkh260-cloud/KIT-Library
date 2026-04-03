@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="description" content="KIT Library — Karavali Institution of Technology Digital Library System">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KIT Library">
+<link rel="manifest" id="manifestLink">
+<title>KIT Library — Karavali Institution of Technology</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getAuth, onAuthStateChanged, signInWithEmailAndPassword,
+    createUserWithEmailAndPassword, signOut, updateProfile,
+    GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, collection,
+    query, where, getDocs, deleteDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // ════════════════════════════════════════════════════════════
+  //  🔧 PASTE YOUR FIREBASE CONFIG HERE
+  //  Firebase Console → Project Settings → Your Apps → Web App
+  // ════════════════════════════════════════════════════════════
+  const firebaseConfig = {
+    apiKey: "AIzaSyBDlN87xrd8NP_PQ4CIsV5q-P78w8k80Ms",
+  authDomain: "library-5015d.firebaseapp.com",
+  projectId: "library-5015d",
+  storageBucket: "library-5015d.firebasestorage.app",
+  messagingSenderId: "25135880670",
+  appId: "1:25135880670:web:0885d13d72ee38061ae54f",
+  
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+  const googleProvider = new GoogleAuthProvider();
+
+  window._firebase = {
+    auth, db, googleProvider,
+    signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    signOut, updateProfile, signInWithPopup,
+    sendPasswordResetEmail,
+    doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc
+  };
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      window.currentUser = user;
+      // Load role from Firestore
+      const fb = window._firebase;
+      try {
+        const snap = await fb.getDoc(fb.doc(fb.db, 'users', user.uid));
+        window.currentUserRole = snap.exists() ? (snap.data().role || 'student') : 'student';
+      } catch(e) { window.currentUserRole = 'student'; }
+
+      document.getElementById('authOverlay').style.display = 'none';
+      document.getElementById('appShell').style.display = 'block';
+      updateHeaderUser(user);
+      if (window.currentUserRole === 'librarian') {
+        // Show librarian-only nav
+        document.getElementById('librarianNav').style.display = 'flex';
+        document.getElementById('studentOnlyBtns').style.display = 'none';
+        switchView('admin');
+      } else {
+        document.getElementById('librarianNav').style.display = 'none';
+        document.getElementById('studentOnlyBtns').style.display = 'flex';
+        switchView('student');
+        loadMyBooks();
+      }
+    } else {
+      window.currentUser = null;
+      window.currentUserRole = null;
+      document.getElementById('authOverlay').style.display = 'flex';
+      document.getElementById('appShell').style.display = 'none';
+    }
+  });
+</script>
+
+<style>
+:root {
+  --ink: #1a1a2e;
+  --paper: #f7f4ef;
+  --cream: #ede9e1;
+  --accent: #c0392b;
+  --accent2: #e67e22;
+  --green: #27ae60;
+  --muted: #7f8c8d;
+  --border: #d5cfc4;
+  --white: #ffffff;
+  --shadow: 0 2px 12px rgba(26,26,46,0.08);
+  --shadow-md: 0 6px 30px rgba(26,26,46,0.15);
+  --blue: #2980b9;
+  --google-red: #DB4437;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); min-height: 100vh; }
+
+/* ════════ AUTH OVERLAY ════════ */
+#authOverlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 40%, #2c1a4e 100%);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.auth-card {
+  background: white; border-radius: 24px;
+  width: 440px; max-width: 100%;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  overflow: hidden;
+  animation: slideUp 0.4s ease;
+}
+@keyframes slideUp { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
+
+.auth-card-header {
+  background: linear-gradient(135deg, var(--ink), #2c3e6b);
+  padding: 28px 32px 24px;
+  text-align: center;
+  position: relative;
+}
+.auth-logo { width: 52px; height: 52px; border-radius: 12px; margin-bottom: 10px; background: rgba(255,255,255,0.1); }
+.auth-card-header h1 { font-family:'Playfair Display',serif; color:white; font-size:1.4rem; }
+.auth-card-header p { color:#aaa; font-size:0.78rem; margin-top:4px; }
+
+.auth-role-picker {
+  display: flex; gap: 0;
+  background: rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 5px; margin: 16px auto 0;
+  width: fit-content;
+}
+.role-btn {
+  padding: 8px 22px; border: none; border-radius: 9px;
+  font-family: 'DM Sans', sans-serif; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: all 0.25s; background: transparent; color: #999;
+}
+.role-btn.active { background: white; color: var(--ink); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+
+.auth-body { padding: 28px 32px 32px; }
+
+.auth-tabs { display:flex; gap:4px; background:var(--cream); border-radius:10px; padding:4px; margin-bottom:22px; }
+.auth-tab {
+  flex:1; padding:8px; text-align:center; border:none;
+  background:transparent; border-radius:7px;
+  font-family:'DM Sans',sans-serif; font-size:0.85rem; font-weight:500;
+  cursor:pointer; color:var(--muted); transition:all 0.2s;
+}
+.auth-tab.active { background:white; color:var(--ink); box-shadow:0 1px 4px rgba(0,0,0,0.1); }
+
+.auth-field { margin-bottom: 14px; }
+.auth-field label { display:block; font-size:0.72rem; font-weight:700; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.06em; }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 44px !important; }
+.pw-eye {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; color: var(--muted);
+  padding: 4px; font-size: 1rem; line-height:1; transition: color 0.2s;
+}
+.pw-eye:hover { color: var(--ink); }
+.auth-input {
+  width: 100%; padding: 12px 16px;
+  border: 1.5px solid var(--border); border-radius: 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 0.92rem;
+  outline: none; transition: border-color 0.2s; color: var(--ink);
+}
+.auth-input:focus { border-color: var(--accent); }
+
+.forgot-link { font-size:0.78rem; color:var(--blue); cursor:pointer; text-align:right; margin-top:4px; display:block; }
+.forgot-link:hover { text-decoration:underline; }
+
+.auth-error { background:#fdecea; color:var(--accent); border-radius:8px; padding:10px 14px; font-size:0.82rem; margin-bottom:14px; display:none; }
+.auth-error.show { display:block; }
+.auth-success { background:#eafaf1; color:var(--green); border-radius:8px; padding:10px 14px; font-size:0.82rem; margin-bottom:14px; display:none; }
+.auth-success.show { display:block; }
+
+.btn-full { width:100%; justify-content:center; padding:13px; font-size:0.95rem; margin-bottom:10px; }
+.btn-google {
+  width:100%; padding:12px; border:1.5px solid var(--border); border-radius:10px;
+  background:white; font-family:'DM Sans',sans-serif; font-size:0.88rem; font-weight:600;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px;
+  transition:all 0.2s; color:var(--ink);
+}
+.btn-google:hover { background:#f8f8f8; border-color:#aaa; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+.google-icon { width:18px; height:18px; }
+
+.auth-divider { display:flex; align-items:center; gap:10px; margin:14px 0; color:var(--muted); font-size:0.78rem; }
+.auth-divider::before, .auth-divider::after { content:''; flex:1; height:1px; background:var(--border); }
+
+.librarian-note {
+  background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px;
+  padding: 10px 14px; font-size: 0.78rem; color: #795548; margin-bottom: 14px;
+}
+
+/* ════════ FORGOT PASSWORD PANEL ════════ */
+#forgotPanel { display: none; }
+
+/* ════════ APP SHELL ════════ */
+#appShell { display: none; }
+
+/* ── HEADER ── */
+header {
+  background: var(--ink); color: var(--white);
+  padding: 0 40px; display: flex; align-items: center;
+  justify-content: space-between; height: 72px;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.25); gap: 16px;
+}
+.header-left { display:flex; align-items:center; gap:16px; }
+.header-logo { width:42px; height:42px; border-radius:8px; object-fit:cover; background:#fff2; }
+.header-title { font-family:'Playfair Display',serif; font-size:1.2rem; letter-spacing:0.02em; }
+.header-sub { font-size:0.7rem; color:#aaa; font-weight:300; letter-spacing:0.08em; text-transform:uppercase; }
+.header-right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+
+.mode-toggle { display:flex; gap:6px; background:rgba(255,255,255,0.08); border-radius:10px; padding:5px; }
+.mode-btn {
+  padding:7px 18px; border:none; border-radius:7px;
+  font-family:'DM Sans',sans-serif; font-size:0.82rem; font-weight:500;
+  cursor:pointer; transition:all 0.2s; background:transparent; color:#aaa;
+}
+.mode-btn.active { background:var(--white); color:var(--ink); }
+
+.role-badge {
+  padding: 4px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.role-badge.student { background: rgba(39,174,96,0.2); color: #2ecc71; }
+.role-badge.librarian { background: rgba(192,57,43,0.2); color: #e74c3c; }
+
+/* User badge */
+.user-badge-wrapper { position: relative; }
+.user-badge {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.1); border-radius: 10px;
+  padding: 6px 14px 6px 8px; cursor: pointer; transition: background 0.2s;
+}
+.user-badge:hover { background: rgba(255,255,255,0.18); }
+.user-avatar {
+  width:32px; height:32px; border-radius:50%;
+  background:var(--accent); color:white;
+  font-size:0.85rem; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden; flex-shrink:0;
+}
+.user-avatar img { width:100%; height:100%; object-fit:cover; }
+.user-name { font-size:0.82rem; font-weight:500; color:white; max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.user-books-info { font-size:0.68rem; color:#aaa; }
+
+.user-dropdown {
+  position:absolute; top:calc(100% + 10px); right:0;
+  background:white; border:1.5px solid var(--border); border-radius:14px;
+  box-shadow:var(--shadow-md); min-width:220px; z-index:200; overflow:hidden; display:none;
+}
+.user-dropdown.open { display:block; }
+.user-dropdown-header { padding:16px; border-bottom:1px solid var(--border); }
+.user-dropdown-email { font-size:0.75rem; color:var(--muted); margin-top:2px; }
+.user-dropdown-item {
+  padding:11px 16px; font-size:0.88rem; cursor:pointer;
+  display:flex; align-items:center; gap:10px; transition:background 0.15s;
+}
+.user-dropdown-item:hover { background:var(--paper); }
+.user-dropdown-item.danger { color:var(--accent); }
+.badge-count { background:var(--accent); color:white; border-radius:20px; padding:1px 7px; font-size:0.7rem; font-weight:700; }
+
+/* Install PWA button */
+.install-btn {
+  padding:7px 14px; border:1.5px solid rgba(255,255,255,0.25); border-radius:8px;
+  background:transparent; color:rgba(255,255,255,0.75); font-family:'DM Sans',sans-serif;
+  font-size:0.78rem; font-weight:500; cursor:pointer; transition:all 0.2s;
+  display:none; align-items:center; gap:6px; white-space:nowrap;
+}
+.install-btn:hover { background:rgba(255,255,255,0.1); color:white; border-color:rgba(255,255,255,0.5); }
+.install-btn.visible { display:flex; }
+
+/* ── MAIN ── */
+main { padding:36px 40px; max-width:1300px; margin:0 auto; }
+.view { display:none; }
+.view.active { display:block; }
+
+/* Student hero */
+.student-hero {
+  background:linear-gradient(135deg, var(--ink) 0%, #2c3e6b 100%);
+  color:white; border-radius:16px; padding:36px 40px;
+  margin-bottom:28px; position:relative; overflow:hidden;
+}
+.student-hero::before { content:'📚'; position:absolute; right:40px; top:50%; transform:translateY(-50%); font-size:5rem; opacity:0.12; }
+.student-hero h2 { font-family:'Playfair Display',serif; font-size:1.9rem; margin-bottom:6px; }
+.student-hero p { color:#bbb; font-size:0.92rem; }
+.search-bar-wrap { margin-top:20px; display:flex; gap:10px; }
+.search-bar-wrap input {
+  flex:1; padding:13px 18px; border:none; border-radius:10px;
+  font-family:'DM Sans',sans-serif; font-size:0.95rem;
+  background:rgba(255,255,255,0.12); color:white; outline:none; backdrop-filter:blur(10px);
+}
+.search-bar-wrap input::placeholder { color:rgba(255,255,255,0.45); }
+.search-bar-wrap input:focus { background:rgba(255,255,255,0.18); }
+
+.filter-bar { display:flex; gap:12px; margin-bottom:22px; flex-wrap:wrap; align-items:center; }
+.filter-bar label { font-size:0.82rem; font-weight:500; color:var(--muted); }
+.filter-select {
+  padding:8px 14px; border:1.5px solid var(--border); border-radius:8px;
+  font-family:'DM Sans',sans-serif; font-size:0.85rem; background:white;
+  color:var(--ink); cursor:pointer; outline:none;
+}
+.filter-select:focus { border-color:var(--accent); }
+.results-meta { font-size:0.82rem; color:var(--muted); margin-left:auto; font-family:'DM Mono',monospace; }
+
+/* Book grid */
+.book-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+.book-card {
+  background:var(--white); border-radius:12px; padding:20px;
+  border:1.5px solid var(--border); transition:all 0.2s; position:relative;
+}
+.book-card:hover { border-color:var(--accent); box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.book-card-shelf {
+  position:absolute; top:16px; right:16px;
+  background:var(--ink); color:white; font-family:'DM Mono',monospace;
+  font-size:0.72rem; padding:3px 9px; border-radius:5px; font-weight:500;
+}
+.book-card-title { font-family:'Playfair Display',serif; font-size:1rem; line-height:1.4; margin-bottom:6px; padding-right:50px; }
+.book-card-author { font-size:0.82rem; color:var(--muted); margin-bottom:10px; font-weight:500; }
+.book-card-genre { font-size:0.75rem; background:var(--cream); color:var(--ink); padding:3px 9px; border-radius:20px; display:inline-block; margin-bottom:12px; }
+.book-status {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:0.78rem; font-weight:600; padding:4px 10px; border-radius:20px;
+}
+.book-status.available { background:#eafaf1; color:var(--green); }
+.book-status.issued { background:#fef9e7; color:var(--accent2); }
+.book-status::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.book-card-actions { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
+.my-issued-tag { background:#eaf3fb; color:var(--blue); font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:20px; display:inline-flex; align-items:center; gap:4px; }
+.no-results { text-align:center; padding:60px 20px; color:var(--muted); grid-column:1/-1; }
+.no-results .emoji { font-size:2.5rem; margin-bottom:12px; }
+
+/* My Books Panel */
+.my-books-panel { background:white; border:1.5px solid var(--border); border-radius:14px; padding:24px 28px; margin-bottom:28px; }
+.my-books-panel h3 { font-size:1rem; font-weight:600; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+.my-book-item { display:flex; align-items:center; gap:12px; background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-bottom:10px; }
+.my-book-item-info { flex:1; }
+.my-book-title { font-weight:600; font-size:0.88rem; }
+.my-book-meta { font-size:0.75rem; color:var(--muted); margin-top:2px; }
+.my-book-date { font-size:0.72rem; color:var(--muted); font-family:'DM Mono',monospace; }
+.my-books-empty { color:var(--muted); font-size:0.88rem; text-align:center; padding:20px 0; }
+
+/* Admin */
+.admin-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:14px; }
+.admin-header h2 { font-family:'Playfair Display',serif; font-size:1.6rem; }
+.stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:28px; }
+.stat-card { background:var(--white); border:1.5px solid var(--border); border-radius:12px; padding:18px 20px; }
+.stat-num { font-family:'Playfair Display',serif; font-size:2rem; color:var(--ink); }
+.stat-label { font-size:0.78rem; color:var(--muted); margin-top:2px; font-weight:500; text-transform:uppercase; letter-spacing:0.06em; }
+
+.admin-search-row { display:flex; gap:10px; margin-bottom:16px; align-items:center; flex-wrap:wrap; }
+.admin-search-row input { flex:1; min-width:200px; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px; font-family:'DM Sans',sans-serif; font-size:0.88rem; outline:none; }
+.admin-search-row input:focus { border-color:var(--accent); }
+
+.table-wrap { background:white; border-radius:14px; border:1.5px solid var(--border); overflow:hidden; overflow-x:auto; }
+table { width:100%; border-collapse:collapse; min-width:700px; }
+thead th { background:var(--ink); color:white; padding:13px 16px; text-align:left; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.07em; }
+tbody tr { border-bottom:1px solid var(--border); transition:background 0.15s; }
+tbody tr:last-child { border-bottom:none; }
+tbody tr:hover { background:#fafaf8; }
+tbody td { padding:12px 16px; font-size:0.85rem; vertical-align:middle; }
+td.title-cell { font-weight:500; max-width:260px; }
+td.author-cell { color:var(--muted); }
+td.actions-cell { white-space:nowrap; }
+.shelf-badge { font-family:'DM Mono',monospace; font-size:0.72rem; background:var(--ink); color:white; padding:2px 8px; border-radius:4px; font-weight:500; }
+
+/* Buttons */
+.btn { padding:10px 20px; border:none; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:0.88rem; font-weight:600; cursor:pointer; transition:all 0.18s; display:inline-flex; align-items:center; gap:6px; }
+.btn-primary { background:var(--accent); color:white; }
+.btn-primary:hover { background:#a93226; }
+.btn-blue { background:var(--blue); color:white; }
+.btn-blue:hover { background:#1f6f9e; }
+.btn-ghost { background:var(--cream); color:var(--ink); }
+.btn-ghost:hover { background:var(--border); }
+.btn-sm { padding:5px 12px; font-size:0.78rem; border-radius:6px; }
+.btn-danger { background:#fdecea; color:var(--accent); }
+.btn-danger:hover { background:var(--accent); color:white; }
+.btn-success { background:#eafaf1; color:var(--green); }
+.btn-success:hover { background:var(--green); color:white; }
+.btn-warn { background:#fef9e7; color:var(--accent2); }
+.btn-warn:hover { background:var(--accent2); color:white; }
+.btn:disabled { opacity:0.55; cursor:not-allowed; }
+
+/* Edit Modal */
+.modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:500; align-items:center; justify-content:center; padding:16px; }
+.modal-bg.open { display:flex; }
+.modal { background:white; border-radius:16px; padding:28px 32px; width:500px; max-width:95vw; box-shadow:var(--shadow-md); }
+.modal h3 { font-family:'Playfair Display',serif; font-size:1.3rem; margin-bottom:18px; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.form-field label { display:block; font-size:0.75rem; font-weight:600; color:var(--muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.05em; }
+.form-field input, .form-field select { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:8px; font-family:'DM Sans',sans-serif; font-size:0.88rem; background:white; color:var(--ink); outline:none; transition:border-color 0.2s; }
+.form-field input:focus, .form-field select:focus { border-color:var(--accent); }
+.form-field.full { grid-column:1/-1; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+
+/* Toast */
+#toast { position:fixed; bottom:30px; right:30px; background:var(--ink); color:white; padding:12px 22px; border-radius:10px; font-size:0.88rem; font-weight:500; box-shadow:var(--shadow-md); opacity:0; transition:opacity 0.3s; z-index:9999; max-width:320px; }
+#toast.show { opacity:1; }
+
+/* Mobile */
+@media(max-width:768px){
+  main { padding:20px 16px 80px; }
+  header { padding:0 16px; height:60px; }
+  .header-title { font-size:0.95rem; }
+  .stats-row { grid-template-columns:repeat(2,1fr); }
+  .mode-toggle { display:none; }
+  .install-btn { display:none !important; }
+  .role-badge { display:none; }
+  .mobile-tabs { display:flex !important; }
+}
+.mobile-tabs {
+  display:none; position:fixed; bottom:0; left:0; right:0;
+  background:var(--ink); z-index:99; box-shadow:0 -2px 20px rgba(0,0,0,0.2);
+}
+.mobile-tabs button {
+  flex:1; padding:14px; border:none; background:transparent;
+  color:#888; font-family:'DM Sans',sans-serif; font-size:0.72rem;
+  font-weight:500; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;
+  transition:color 0.2s;
+}
+.mobile-tabs button.active { color:white; }
+
+/* PWA install prompt */
+#pwaPrompt {
+  position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+  background:var(--ink); color:white; border-radius:16px;
+  padding:16px 24px; box-shadow:var(--shadow-md); z-index:8000;
+  display:none; align-items:center; gap:16px; max-width:380px; width:90%;
+  animation:slideUp 0.3s ease;
+}
+#pwaPrompt.show { display:flex; }
+.pwa-prompt-text { flex:1; font-size:0.85rem; }
+.pwa-prompt-title { font-weight:700; margin-bottom:2px; }
+.pwa-prompt-sub { color:#aaa; font-size:0.75rem; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════
+     AUTH OVERLAY — shown before login
+════════════════════════════════════════ -->
+<div id="authOverlay">
+  <div class="auth-card">
+    <div class="auth-card-header">
+      <img class="auth-logo" src="https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png" alt="KIT" onerror="this.style.display='none'">
+      <h1>KIT Library</h1>
+      <p>Karavali Institution of Technology</p>
+
+      <!-- Role selector -->
+      <div class="auth-role-picker">
+        <button class="role-btn active" onclick="selectRole('student')" id="roleStudent">🎓 Student</button>
+        <button class="role-btn" onclick="selectRole('librarian')" id="roleLibrarian">🔑 Librarian</button>
+      </div>
+    </div>
+
+    <div class="auth-body">
+
+      <!-- Sign In / Sign Up tabs -->
+      <div class="auth-tabs" id="authTabsWrap">
+        <button class="auth-tab active" onclick="switchAuthTab('signin')">Sign In</button>
+        <button class="auth-tab" onclick="switchAuthTab('signup')">Register</button>
+      </div>
+
+      <div id="authError" class="auth-error"></div>
+      <div id="authSuccess" class="auth-success"></div>
+
+      <!-- SIGN IN FORM -->
+      <div id="signinForm">
+        <div class="auth-field">
+          <label>Email Address</label>
+          <input class="auth-input" type="email" id="siEmail" placeholder="you@example.com">
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <div class="pw-wrap">
+            <input class="auth-input" type="password" id="siPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleSignIn()">
+            <button class="pw-eye" type="button" onclick="togglePw('siPassword',this)" title="Show/hide password">👁</button>
+          </div>
+          <span class="forgot-link" onclick="showForgotPanel()">Forgot password?</span>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="handleSignIn()" id="siBtn">Sign In</button>
+
+        <div class="auth-divider">or</div>
+
+        <button class="btn-google" onclick="handleGoogleAuth()">
+          <svg class="google-icon" viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          Continue with Google
+        </button>
+      </div>
+
+      <!-- FORGOT PASSWORD PANEL -->
+      <div id="forgotPanel">
+        <p style="font-size:0.85rem;color:var(--muted);margin-bottom:16px;">Enter your registered email and we'll send a password reset link.</p>
+        <div class="auth-field">
+          <label>Email Address</label>
+          <input class="auth-input" type="email" id="forgotEmail" placeholder="you@example.com">
+        </div>
+        <button class="btn btn-primary btn-full" onclick="handleForgotPassword()" id="forgotBtn">Send Reset Email</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="hideForgotPanel()">← Back to Sign In</button>
+      </div>
+
+      <!-- REGISTER FORM -->
+      <div id="signupForm" style="display:none">
+        <div id="librarianNote" class="librarian-note" style="display:none">
+          🔐 <strong>Librarian registration</strong> requires an authorization code provided by the institution.
+        </div>
+        <div class="auth-field">
+          <label>Full Name</label>
+          <input class="auth-input" type="text" id="suName" placeholder="Your full name">
+        </div>
+        <div class="auth-field">
+          <label>Email Address</label>
+          <input class="auth-input" type="email" id="suEmail" placeholder="you@example.com">
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <div class="pw-wrap">
+            <input class="auth-input" type="password" id="suPassword" placeholder="Min. 6 characters">
+            <button class="pw-eye" type="button" onclick="togglePw('suPassword',this)" title="Show/hide password">👁</button>
+          </div>
+        </div>
+        <div class="auth-field" id="libCodeWrap" style="display:none">
+          <label>Librarian Code</label>
+          <div class="pw-wrap">
+            <input class="auth-input" type="password" id="libCode" placeholder="Institution authorization code">
+            <button class="pw-eye" type="button" onclick="togglePw('libCode',this)" title="Show/hide">👁</button>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="handleSignUp()" id="suBtn" onkeydown="if(event.key==='Enter')handleSignUp()">Create Account</button>
+
+        <div class="auth-divider" id="googleDividerSignup">or</div>
+        <button class="btn-google" onclick="handleGoogleAuth()" id="googleSignupBtn">
+          <svg class="google-icon" viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          Sign up with Google
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     APP SHELL — shown after login
+════════════════════════════════════════ -->
+<div id="appShell">
+
+<header>
+  <div class="header-left">
+    <img class="header-logo" src="https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png" alt="KIT Logo" onerror="this.style.display='none'">
+    <div>
+      <div class="header-title">KIT Library</div>
+      <div class="header-sub">Karavali Institution of Technology</div>
+    </div>
+  </div>
+
+  <div class="header-right">
+    <!-- Install as App button -->
+    <button class="install-btn" id="installBtn" onclick="installPWA()">
+      ⬇️ Install App
+    </button>
+
+    <!-- Role badge -->
+    <span class="role-badge" id="roleBadge">Student</span>
+
+    <!-- Nav (students only) -->
+    <div class="mode-toggle" id="studentOnlyBtns" style="display:none">
+      <button class="mode-btn active" onclick="switchView('student')">🎓 Browse</button>
+    </div>
+
+    <!-- Nav (librarians only) -->
+    <div class="mode-toggle" id="librarianNav" style="display:none">
+      <button class="mode-btn active" onclick="switchView('admin')">🔑 Dashboard</button>
+    </div>
+
+    <!-- User badge -->
+    <div class="user-badge-wrapper">
+      <div class="user-badge" onclick="toggleUserDropdown()">
+        <div class="user-avatar" id="userAvatar"><span id="userInitial">U</span></div>
+        <div>
+          <div class="user-name" id="userName">User</div>
+          <div class="user-books-info" id="userSubtext">Loading…</div>
+        </div>
+      </div>
+      <div class="user-dropdown" id="userDropdown">
+        <div class="user-dropdown-header">
+          <div style="font-weight:600;font-size:0.88rem" id="dropdownName">—</div>
+          <div class="user-dropdown-email" id="dropdownEmail">—</div>
+        </div>
+        <div class="user-dropdown-item" id="myBooksLink" onclick="scrollToMyBooks()" style="display:none">
+          📚 My Issued Books <span class="badge-count" id="dropdownBooksCount">0</span>
+        </div>
+        <div class="user-dropdown-item danger" onclick="handleSignOut()">🚪 Sign Out</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ═══ STUDENT VIEW ═══ -->
+  <div class="view active" id="view-student">
+    <div class="student-hero">
+      <h2 id="heroGreeting">Find Your Book</h2>
+      <p>Search across all shelves · Check availability instantly</p>
+      <div class="search-bar-wrap">
+        <input type="text" id="studentSearch" placeholder="Search by title, author, genre, or shelf…" oninput="renderStudentGrid()">
+      </div>
+    </div>
+
+    <!-- My Issued Books -->
+    <div id="myBooksSection" style="display:none">
+      <div class="my-books-panel">
+        <h3>📖 My Issued Books</h3>
+        <div id="myBooksList"><div class="my-books-empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <label>Filter:</label>
+      <select class="filter-select" id="filterShelf" onchange="renderStudentGrid()"><option value="">All Shelves</option></select>
+      <select class="filter-select" id="filterGenre" onchange="renderStudentGrid()"><option value="">All Genres</option></select>
+      <select class="filter-select" id="filterStatus" onchange="renderStudentGrid()">
+        <option value="">Any Status</option>
+        <option value="available">Available</option>
+        <option value="issued">Issued</option>
+      </select>
+      <span class="results-meta" id="resultsMeta"></span>
+    </div>
+
+    <div class="book-grid" id="bookGrid"></div>
+  </div>
+
+  <!-- ═══ ADMIN VIEW ═══ -->
+  <div class="view" id="view-admin">
+    <div class="admin-header">
+      <h2>Librarian Dashboard</h2>
+      <button class="btn btn-primary" onclick="openAddModal()">＋ Add Book</button>
+    </div>
+    <div class="stats-row" id="statsRow"></div>
+    <div class="admin-search-row">
+      <input type="text" id="adminSearch" placeholder="Search books…" oninput="renderAdminTable()">
+      <select class="filter-select" id="adminFilterShelf" onchange="renderAdminTable()"><option value="">All Shelves</option></select>
+      <select class="filter-select" id="adminFilterStatus" onchange="renderAdminTable()">
+        <option value="">Any Status</option>
+        <option value="available">Available</option>
+        <option value="issued">Issued</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Title</th><th>Author</th><th>Genre</th>
+            <th>Shelf</th><th>Status</th><th>Issued To</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="adminTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- Mobile tabs -->
+<div class="mobile-tabs" id="mobileTabs">
+  <button class="active" onclick="switchView('student')" id="mobileStudentBtn" style="display:none">🎓<br>Browse</button>
+  <button onclick="switchView('admin')" id="mobileAdminBtn" style="display:none">🔑<br>Admin</button>
+</div>
+
+</div><!-- end appShell -->
+
+<!-- Edit / Add Modal -->
+<div class="modal-bg" id="editModal">
+  <div class="modal">
+    <h3 id="modalTitle">Edit Book</h3>
+    <div class="form-grid">
+      <div class="form-field full">
+        <label>Title</label>
+        <input type="text" id="editTitle">
+      </div>
+      <div class="form-field">
+        <label>Author</label>
+        <input type="text" id="editAuthor">
+      </div>
+      <div class="form-field">
+        <label>Genre</label>
+        <input type="text" id="editGenre">
+      </div>
+      <div class="form-field">
+        <label>Shelf</label>
+        <input type="text" id="editShelf" maxlength="4">
+      </div>
+      <div class="form-field">
+        <label>Status</label>
+        <select id="editStatus">
+          <option value="available">Available</option>
+          <option value="issued">Issued</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- PWA install prompt -->
+<div id="pwaPrompt">
+  <div class="pwa-prompt-text">
+    <div class="pwa-prompt-title">📱 Install KIT Library</div>
+    <div class="pwa-prompt-sub">Add to home screen for quick access</div>
+  </div>
+  <button class="btn btn-primary btn-sm" onclick="installPWA()">Install</button>
+  <button class="btn btn-ghost btn-sm" onclick="dismissPWA()">Later</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+//  SECRET LIBRARIAN CODE — change this!
+//  Store this securely in production
+// ══════════════════════════════════════════
+const LIBRARIAN_SECRET = "KIT@LIB2024";
+
+// ═══ DATA ═══
+let books = [
+  {id:1,title:"Theory of Structures",author:"S Ramamrutham",genre:"Civil Engineering",shelf:"A1",status:"available",issuedTo:null,issuedToName:null},
+  {id:2,title:"Traffic Engineering & Transport Planning",author:"Dr. L.R. Kadiyali",genre:"Non-Fiction, Technical",shelf:"A2",status:"available",issuedTo:null,issuedToName:null},
+  {id:3,title:"Transportation Engineering",author:"K P Subramania",genre:"Highway, Railway, Airport & Harbour Engineering",shelf:"A2",status:"issued",issuedTo:null,issuedToName:null},
+  {id:4,title:"Irrigation Engineering and Hydraulic Structures",author:"S K Garg",genre:"Civil Engineering & Water Resource Engineering",shelf:"A3",status:"available",issuedTo:null,issuedToName:null},
+  {id:5,title:"Water Supply Engineering",author:"S K Garg",genre:"Civil/Environment Engineering",shelf:"A3",status:"available",issuedTo:null,issuedToName:null},
+  {id:6,title:"Water Wave Mechanics for Engineering and Scientists",author:"Robert G. Dean",genre:"Coastal Engineering, Fluid Mechanics",shelf:"A3",status:"available",issuedTo:null,issuedToName:null},
+  {id:7,title:"Industrial Waste Treatment Technology",author:"Ahmed Ashfaq",genre:"Physical and Biological Treatment",shelf:"A3",status:"issued",issuedTo:null,issuedToName:null},
+  {id:8,title:"Water and Wastewater Technology",author:"Mark J. Hammer Sr.",genre:"Technology and Engineering",shelf:"A3",status:"available",issuedTo:null,issuedToName:null},
+  {id:9,title:"Water Technology",author:"N.F. Gray",genre:"Water Treatment & Purification",shelf:"A3",status:"available",issuedTo:null,issuedToName:null},
+  {id:10,title:"Irrigation and Water Power Engineering",author:"B.C. Punmia",genre:"Civil Engineering",shelf:"A3",status:"available",issuedTo:null,issuedToName:null},
+  {id:11,title:"Water Supply Engineering",author:"Dr B.C. Punmia",genre:"Civil Engineering",shelf:"A4",status:"issued",issuedTo:null,issuedToName:null},
+  {id:12,title:"Water Supply and Sanitary Engineering",author:"S.C. Rangwala",genre:"Civil/Environment Engineering",shelf:"A4",status:"available",issuedTo:null,issuedToName:null},
+  {id:13,title:"Wastewater Engineering",author:"Dr B.C. Punmia",genre:"Civil Engineering",shelf:"A4",status:"available",issuedTo:null,issuedToName:null},
+  {id:14,title:"Groundwater Hydrology",author:"David Keith Todd",genre:"Physical Science & Engineering",shelf:"A4",status:"available",issuedTo:null,issuedToName:null},
+  {id:15,title:"Design of Steel Structures",author:"Dr. S. Sankaran",genre:"Civil & Structural Engineering",shelf:"B1",status:"available",issuedTo:null,issuedToName:null},
+  {id:16,title:"Structural Analysis Volume 2",author:"SS Bhavikatti",genre:"Technology & Engineering",shelf:"B1",status:"issued",issuedTo:null,issuedToName:null},
+  {id:17,title:"Structural Analysis Volume 2",author:"Dr. D.S. Rajendra Prasad",genre:"Technology & Engineering",shelf:"B1",status:"available",issuedTo:null,issuedToName:null},
+  {id:18,title:"Structural Analysis: A Unified Approach",author:"D S Prakash Rao",genre:"Technology & Engineering",shelf:"B1",status:"available",issuedTo:null,issuedToName:null},
+  {id:19,title:"Structural Design & Drawing V-3",author:"Krishnamurthy",genre:"Civil & Structural Engineering",shelf:"B1",status:"available",issuedTo:null,issuedToName:null},
+  {id:20,title:"Structural Design & Drawing (Reinforced Concrete & Steel)",author:"N Krishna Raju",genre:"Civil & Structural Engineering",shelf:"B1",status:"issued",issuedTo:null,issuedToName:null},
+  {id:21,title:"Structural Analysis (A Matrix Approach)",author:"Pandit Gupta",genre:"Technology & Engineering",shelf:"B1",status:"available",issuedTo:null,issuedToName:null},
+  {id:22,title:"Modern Experimental Stress Analysis",author:"James F. Doyle",genre:"Mechanic & Civil Engineering",shelf:"B1",status:"available",issuedTo:null,issuedToName:null},
+  {id:23,title:"Basic Structural Analysis",author:"K.U. Muthu",genre:"Civil & Structural Engineering",shelf:"B2",status:"available",issuedTo:null,issuedToName:null},
+  {id:24,title:"Basic Structural Analysis Third Edition",author:"Reddy",genre:"Civil & Structural Engineering",shelf:"B2",status:"available",issuedTo:null,issuedToName:null},
+  {id:25,title:"Basic Structural Analysis Second Edition",author:"Reddy",genre:"Civil & Structural Engineering",shelf:"B2",status:"issued",issuedTo:null,issuedToName:null},
+  {id:26,title:"Structural Analysis - I Fourth Edition",author:"SS Bhavikatti",genre:"Civil & Structural Engineering",shelf:"B2",status:"available",issuedTo:null,issuedToName:null},
+  {id:27,title:"Structural Analysis V-1 Second Edition",author:"SS Bhavikatti",genre:"Civil & Structural Engineering",shelf:"B2",status:"available",issuedTo:null,issuedToName:null},
+  {id:28,title:"Structural Analysis V-1 Third Edition",author:"SS Bhavikatti",genre:"Civil & Structural Engineering",shelf:"B2",status:"available",issuedTo:null,issuedToName:null},
+  {id:29,title:"Structural Analysis V-2 Third Edition",author:"SS Bhavikatti",genre:"Civil & Structural Engineering",shelf:"B2",status:"available",issuedTo:null,issuedToName:null},
+  {id:30,title:"Design of Steel Structures",author:"Suramanian",genre:"Technology & Engineering",shelf:"B3",status:"available",issuedTo:null,issuedToName:null},
+  {id:31,title:"Design and Drawing of Steel Structures",author:"SS Bhavikatti",genre:"Technology & Engineering",shelf:"B3",status:"issued",issuedTo:null,issuedToName:null},
+  {id:32,title:"Design of Steel and Masonry Structures",author:"H.S. Vishwanath",genre:"Technology & Engineering",shelf:"B3",status:"available",issuedTo:null,issuedToName:null},
+  {id:33,title:"Design of Steel Structures Second Edition",author:"Negi",genre:"Technology & Engineering",shelf:"B3",status:"available",issuedTo:null,issuedToName:null},
+  {id:34,title:"Design of Steel Structures",author:"Pearson",genre:"Technology & Engineering",shelf:"B3",status:"available",issuedTo:null,issuedToName:null},
+  {id:35,title:"Design of Steel Structures Second Edition",author:"Duggal",genre:"Technology & Engineering",shelf:"B3",status:"available",issuedTo:null,issuedToName:null},
+  {id:36,title:"Design of Steel Structures Third Edition",author:"Duggal",genre:"Technology & Engineering",shelf:"B3",status:"issued",issuedTo:null,issuedToName:null},
+  {id:37,title:"Design of Steel Structures",author:"Ram Chandra",genre:"Technology & Engineering",shelf:"B3",status:"available",issuedTo:null,issuedToName:null},
+  {id:38,title:"Design of Steel Structures",author:"SS Bhavikatti",genre:"Technology & Civil Engineering",shelf:"B4",status:"available",issuedTo:null,issuedToName:null},
+  {id:39,title:"Design of Steel Structures",author:"Subramanian",genre:"Civil Engineering",shelf:"B4",status:"available",issuedTo:null,issuedToName:null},
+  {id:40,title:"Surveying",author:"Dr. C Punmia",genre:"Technology & Engineering",shelf:"B4",status:"available",issuedTo:null,issuedToName:null},
+  {id:41,title:"Surveying & Levelling",author:"SS Bhavikatti",genre:"Technology & Engineering",shelf:"B4",status:"issued",issuedTo:null,issuedToName:null},
+  {id:42,title:"Surveying & Levelling",author:"TP Kanetkar",genre:"Technology & Engineering",shelf:"B4",status:"available",issuedTo:null,issuedToName:null},
+  {id:43,title:"Plane Surveying",author:"S.V. Kulkani",genre:"Technical & Civil Engineering",shelf:"B4",status:"available",issuedTo:null,issuedToName:null},
+  {id:44,title:"Fundamentals of Surveying",author:"S.K. Roy",genre:"Technical & Civil Engineering",shelf:"B4",status:"available",issuedTo:null,issuedToName:null},
+  {id:45,title:"Surveying",author:"C. Venkathamaiah",genre:"Technical & Civil Engineering",shelf:"B4",status:"available",issuedTo:null,issuedToName:null},
+  {id:46,title:"Soil Mechanics and Foundation",author:"Dr B.C. Punmia",genre:"Civil Engineering",shelf:"C1",status:"available",issuedTo:null,issuedToName:null},
+  {id:47,title:"Soil Mechanics and Foundation",author:"Dr Ashok Kr. Jain",genre:"Civil Engineering",shelf:"C1",status:"available",issuedTo:null,issuedToName:null},
+  {id:48,title:"Soil Mechanics and Foundation",author:"Dr Arun K. Jain",genre:"Civil Engineering",shelf:"C1",status:"issued",issuedTo:null,issuedToName:null},
+  {id:49,title:"Textbook of Soil Mechanics and Foundation Engineering",author:"Murthy",genre:"Geotechnology Series",shelf:"C1",status:"available",issuedTo:null,issuedToName:null},
+  {id:50,title:"Basic Soil Mechanics and Foundation",author:"Alam Singh",genre:"Geotechnical Engineering",shelf:"C1",status:"available",issuedTo:null,issuedToName:null},
+  {id:51,title:"Principles of Soil Mechanics & Foundation Engineering",author:"Murthy",genre:"Geotechnology Engineering",shelf:"C1",status:"available",issuedTo:null,issuedToName:null},
+  {id:52,title:"Strength of Materials Third Edition",author:"B.S. Basavarajaiah",genre:"Civil & Mechanic Engineering",shelf:"C2",status:"available",issuedTo:null,issuedToName:null},
+  {id:53,title:"Strength of Materials Third Edition",author:"P Mahadevaraj",genre:"Civil & Mechanical Engineering",shelf:"C2",status:"available",issuedTo:null,issuedToName:null},
+  {id:54,title:"Strength of Materials",author:"S Ramamrutham",genre:"Civil & Mechanical Engineering",shelf:"C2",status:"issued",issuedTo:null,issuedToName:null},
+  {id:55,title:"Strength of Materials",author:"R.S. Khurmi",genre:"Civil & Mechanical Engineering",shelf:"C2",status:"available",issuedTo:null,issuedToName:null},
+  {id:56,title:"Strength of Materials: Mechanics of Solids",author:"R.S. Khurmi",genre:"Civil & Mechanical Engineering",shelf:"C2",status:"available",issuedTo:null,issuedToName:null},
+  {id:57,title:"Strength of Materials Third Edition",author:"SS Bhavikatti",genre:"Civil Engineering",shelf:"C3",status:"available",issuedTo:null,issuedToName:null},
+  {id:58,title:"Strength of Materials Third Edition",author:"Subramanian",genre:"Civil Engineering",shelf:"C3",status:"available",issuedTo:null,issuedToName:null},
+  {id:59,title:"Strength of Materials Third Edition",author:"Rattan",genre:"Civil Engineering",shelf:"C3",status:"available",issuedTo:null,issuedToName:null},
+  {id:60,title:"A Textbook of Strength of Materials",author:"Dr R.K. Bansal",genre:"Civil Engineering",shelf:"C3",status:"issued",issuedTo:null,issuedToName:null},
+  {id:61,title:"Strength of Materials",author:"S Ramamrutham",genre:"Civil Engineering",shelf:"C3",status:"available",issuedTo:null,issuedToName:null},
+  {id:62,title:"Surveying Volume 1 Third Edition",author:"Duggal",genre:"Technology & Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:63,title:"Surveying Volume 1",author:"Dr B.C. Punmia",genre:"Technology & Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:64,title:"Strength of Materials",author:"S Ramamrutham",genre:"Civil Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:65,title:"Strength of Materials: Problems & Objectives",author:"Bose",genre:"Technology & Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:66,title:"Strength of Materials Revised Fourth Edition",author:"Nash",genre:"Technology & Engineering",shelf:"C4",status:"issued",issuedTo:null,issuedToName:null},
+  {id:67,title:"Strength of Materials Volume 1",author:"DS Prakash Rao",genre:"Technology & Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:68,title:"Strength of Materials Second Edition",author:"Subramania",genre:"Technology & Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:69,title:"Strength of Materials",author:"AR Basu",genre:"Technology & Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:70,title:"Strength of Materials Through Problems",author:"Sarkar",genre:"Technology & Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:71,title:"Strength of Materials India Edition",author:"James M. Gere",genre:"Technology & Engineering",shelf:"C4",status:"available",issuedTo:null,issuedToName:null},
+  {id:72,title:"Principles and Practices of Highway Engineering",author:"Dr L.R. Kadiyali",genre:"Transport & Civil Engineering",shelf:"D1",status:"available",issuedTo:null,issuedToName:null},
+  {id:73,title:"Textbook of Highway Engineering",author:"R. Srinivas Kumar",genre:"Transport & Civil Engineering",shelf:"D1",status:"available",issuedTo:null,issuedToName:null},
+  {id:74,title:"Highway Engineering",author:"S.K. Khanna",genre:"Transport & Civil Engineering",shelf:"D1",status:"issued",issuedTo:null,issuedToName:null},
+  {id:75,title:"A Textbook of Railway Engineering",author:"S.C. Saxena",genre:"Railway Engineering",shelf:"D2",status:"available",issuedTo:null,issuedToName:null},
+  {id:76,title:"Design of Railway Structural Elements",author:"H.S. Vishwanath",genre:"Railway Engineering",shelf:"D2",status:"available",issuedTo:null,issuedToName:null},
+  {id:77,title:"Design of RCC Structural Elements",author:"SS Bhavikatti",genre:"Civil Engineering",shelf:"D2",status:"available",issuedTo:null,issuedToName:null},
+  {id:78,title:"RCC Designs",author:"Dr B.C. Punmia",genre:"Civil Engineering",shelf:"D2",status:"available",issuedTo:null,issuedToName:null},
+  {id:79,title:"Treasure of RCC Designs",author:"Sushil Kumar",genre:"Civil Engineering",shelf:"D2",status:"issued",issuedTo:null,issuedToName:null},
+  {id:80,title:"A Textbook of Power Plant Engineering",author:"R.K. Rajput",genre:"Electric Engineering",shelf:"D3",status:"available",issuedTo:null,issuedToName:null},
+  {id:81,title:"Power Plant Engineering",author:"Arora Domkundwar",genre:"Electric Engineering",shelf:"D3",status:"available",issuedTo:null,issuedToName:null},
+  {id:82,title:"Power Plant Engineering",author:"P.K. Nag",genre:"Electric Engineering",shelf:"D4",status:"available",issuedTo:null,issuedToName:null},
+  {id:83,title:"Power Plant Engineering",author:"C. Elamenrhiam",genre:"Electric Engineering",shelf:"D4",status:"issued",issuedTo:null,issuedToName:null},
+  {id:84,title:"Concrete Technology: Theory and Practice",author:"M.S. Shetty",genre:"Civil Engineering",shelf:"E1",status:"available",issuedTo:null,issuedToName:null},
+  {id:85,title:"A Textbook of Fluid Mechanics and Hydraulic Mechanics Ninth Edition",author:"Dr K Bansal",genre:"Engineering & Technology",shelf:"E1",status:"available",issuedTo:null,issuedToName:null},
+  {id:86,title:"A Textbook of Fluid Mechanics and Hydraulic Mechanics",author:"Dr K Bansal",genre:"Engineering & Technology",shelf:"E2",status:"issued",issuedTo:null,issuedToName:null},
+  {id:87,title:"A Textbook of Fluid Mechanics and Hydraulic Mechanics",author:"R.K. Rajput",genre:"Engineering & Technology",shelf:"E2",status:"available",issuedTo:null,issuedToName:null},
+  {id:88,title:"A Textbook of Fluid Mechanics and Hydraulic Mechanics",author:"Dr K Bansal",genre:"Engineering & Technology",shelf:"E2",status:"available",issuedTo:null,issuedToName:null},
+  {id:89,title:"Principles of Geotechnical Engineering Fifth Edition",author:"Braja M. Das",genre:"Technology & Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:90,title:"Fluid Mechanics and Hydraulics Machine",author:"Sarkar",genre:"Technology & Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:91,title:"Engineering Hydrology Third Edition",author:"Subramanya",genre:"Civil Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:92,title:"Engineering Hydrology Second Edition",author:"Subramanya",genre:"Civil Engineering",shelf:"E3",status:"issued",issuedTo:null,issuedToName:null},
+  {id:93,title:"Engineering Hydrology Fourth Edition",author:"Subramanya",genre:"Civil Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:94,title:"Engineering Materials",author:"Rangwal",genre:"Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:95,title:"Fluid Mechanics and Mechanics",author:"Dr R.K. Bansal",genre:"Civil Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:96,title:"Hydraulics and Fluid Mechanics",author:"PN Modi",genre:"Technology & Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:97,title:"Irrigation Engineering and Hydraulic Structures",author:"Dr V.C. Agarwal",genre:"Technology & Engineering",shelf:"E3",status:"issued",issuedTo:null,issuedToName:null},
+  {id:98,title:"Fluid Mechanics and Hydraulic Mechanics",author:"AR Basu",genre:"Technology & Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:99,title:"Foundation Engineering",author:"Varghese",genre:"Civil Engineering",shelf:"E3",status:"available",issuedTo:null,issuedToName:null},
+  {id:100,title:"Engineering Geology",author:"D Venkant Reddy",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:101,title:"Textbook of Physical Geology",author:"G.B. Mahapatra",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:102,title:"Principles of Geotechnical Engineering",author:"Das",genre:"Technology & Engineering",shelf:"E4",status:"issued",issuedTo:null,issuedToName:null},
+  {id:103,title:"Principles of Geotechnical Engineering Second Edition",author:"Donald P. Coduto",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:104,title:"Modern Geotechnical Engineering",author:"Alam Singh",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:105,title:"Textbook of Remote Sensing and Geographical Information System",author:"M. Anji Reddy",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:106,title:"Proceedings Geomechanics and Ground Control",author:"Singh Sinha",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:107,title:"Textbook of Engineering Geology",author:"Kesavulu",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:108,title:"Engineering and General Geology",author:"Prabin Singh",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:109,title:"Engineering Geology",author:"D Venkat Reddy",genre:"Technology & Engineering",shelf:"E4",status:"issued",issuedTo:null,issuedToName:null},
+  {id:110,title:"A Textbook of Geology",author:"G.B. Mahapatra",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:111,title:"A Textbook of Applied Engineering Geology",author:"M.T. Maruthesha Reddy",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+  {id:112,title:"Structural Geology",author:"Billings",genre:"Technology & Engineering",shelf:"E4",status:"available",issuedTo:null,issuedToName:null},
+];
+
+let nextId = books.length + 1;
+let editingId = null;
+let myIssuedBookIds = new Set();
+let selectedRole = 'student'; // current selection on auth screen
+
+// ══════════ PWA SETUP ══════════
+let deferredInstallPrompt = null;
+
+// Generate and inject PWA manifest dynamically
+(function injectManifest() {
+  const manifest = {
+    name: "KIT Library",
+    short_name: "KIT Lib",
+    description: "Karavali Institution of Technology Digital Library",
+    start_url: "./",
+    display: "standalone",
+    background_color: "#f7f4ef",
+    theme_color: "#1a1a2e",
+    orientation: "portrait-primary",
+    icons: [
+      { src: "https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png", sizes: "192x192", type: "image/png" },
+      { src: "https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png", sizes: "512x512", type: "image/png" }
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  document.getElementById('manifestLink').href = url;
+})();
+
+// Register Service Worker for PWA offline
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'kit-lib-v1';
+    const ASSETS = ['./', './index.html'];
+    self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(()=>{}))));
+    self.addEventListener('fetch', e => e.respondWith(
+      caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('./')))
+    ));
+  `;
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl).catch(() => {});
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  document.getElementById('installBtn').classList.add('visible');
+  document.getElementById('pwaPrompt').classList.add('show');
+});
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('installBtn').classList.remove('visible');
+  document.getElementById('pwaPrompt').classList.remove('show');
+  showToast('✅ KIT Library installed successfully!');
+});
+
+function installPWA() {
+  if (!deferredInstallPrompt) {
+    showToast('💡 To install: use your browser menu → "Add to Home Screen"');
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.then(r => {
+    if (r.outcome === 'accepted') showToast('📱 Installing KIT Library…');
+    deferredInstallPrompt = null;
+    document.getElementById('pwaPrompt').classList.remove('show');
+  });
+}
+
+function dismissPWA() {
+  document.getElementById('pwaPrompt').classList.remove('show');
+}
+
+// ══════════ ROLE SELECTION ══════════
+function selectRole(role) {
+  selectedRole = role;
+  document.getElementById('roleStudent').classList.toggle('active', role === 'student');
+  document.getElementById('roleLibrarian').classList.toggle('active', role === 'librarian');
+  document.getElementById('librarianNote').style.display = role === 'librarian' ? 'block' : 'none';
+  document.getElementById('libCodeWrap').style.display = (role === 'librarian' && document.getElementById('signupForm').style.display !== 'none') ? 'block' : 'none';
+  // Hide google for librarian signup for security
+  const isSignup = document.getElementById('signupForm').style.display !== 'none';
+  const googleSignupBtn = document.getElementById('googleSignupBtn');
+  const googleDivider = document.getElementById('googleDividerSignup');
+  if (isSignup && role === 'librarian') {
+    googleSignupBtn.style.display = 'none';
+    googleDivider.style.display = 'none';
+  } else if (isSignup) {
+    googleSignupBtn.style.display = 'flex';
+    googleDivider.style.display = 'flex';
+  }
+}
+
+// ══════════ AUTH TAB SWITCH ══════════
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (i===0)===(tab==='signin')));
+  document.getElementById('signinForm').style.display = tab==='signin' ? 'block':'none';
+  document.getElementById('signupForm').style.display = tab==='signup' ? 'block':'none';
+  document.getElementById('forgotPanel').style.display = 'none';
+  clearAuthMessages();
+  if (tab === 'signup') selectRole(selectedRole); // trigger libCode visibility
+}
+
+// ══════════ PASSWORD VISIBILITY TOGGLE ══════════
+function togglePw(inputId, btn) {
+  const input = document.getElementById(inputId);
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+  btn.title = show ? 'Hide password' : 'Show password';
+}
+
+// ══════════ FORGOT PASSWORD ══════════
+function showForgotPanel() {
+  document.getElementById('signinForm').style.display = 'none';
+  document.getElementById('authTabsWrap').style.display = 'none';
+  document.getElementById('forgotPanel').style.display = 'block';
+  clearAuthMessages();
+  const siEmail = document.getElementById('siEmail').value;
+  if (siEmail) document.getElementById('forgotEmail').value = siEmail;
+}
+
+function hideForgotPanel() {
+  document.getElementById('forgotPanel').style.display = 'none';
+  document.getElementById('signinForm').style.display = 'block';
+  document.getElementById('authTabsWrap').style.display = 'flex';
+  clearAuthMessages();
+}
+
+async function handleForgotPassword() {
+  const fb = window._firebase;
+  if (!fb) { showAuthError('Firebase not configured yet.'); return; }
+  const email = document.getElementById('forgotEmail').value.trim();
+  if (!email) { showAuthError('Please enter your email address.'); return; }
+  const btn = document.getElementById('forgotBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await fb.sendPasswordResetEmail(fb.auth, email);
+    showAuthSuccess('✅ Reset email sent! Check your inbox (and spam folder).');
+    setTimeout(() => hideForgotPanel(), 3000);
+  } catch(err) {
+    const msgs = { 'auth/user-not-found':'No account found with this email.', 'auth/invalid-email':'Please enter a valid email.' };
+    showAuthError(msgs[err.code] || err.message);
+  } finally { btn.disabled = false; btn.textContent = 'Send Reset Email'; }
+}
+
+// ══════════ SIGN IN ══════════
+async function handleSignIn() {
+  const fb = window._firebase;
+  if (!fb) { showAuthError('Firebase not configured. Add your Firebase config to the script.'); return; }
+  const email = document.getElementById('siEmail').value.trim();
+  const pw    = document.getElementById('siPassword').value;
+  if (!email || !pw) { showAuthError('Please enter your email and password.'); return; }
+
+  const btn = document.getElementById('siBtn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const cred = await fb.signInWithEmailAndPassword(fb.auth, email, pw);
+    // Verify role matches
+    const snap = await fb.getDoc(fb.doc(fb.db, 'users', cred.user.uid));
+    const storedRole = snap.exists() ? (snap.data().role || 'student') : 'student';
+    if (storedRole !== selectedRole) {
+      await fb.signOut(fb.auth);
+      showAuthError(`This account is registered as a ${storedRole}. Please select the correct role.`);
+      return;
+    }
+    showToast(`Welcome back, ${cred.user.displayName || email.split('@')[0]}! 👋`);
+  } catch(err) {
+    const msgs = {
+      'auth/user-not-found':'No account found with this email.',
+      'auth/wrong-password':'Incorrect password.',
+      'auth/invalid-email':'Please enter a valid email.',
+      'auth/too-many-requests':'Too many attempts. Try again later.',
+      'auth/invalid-credential':'Invalid email or password.'
+    };
+    showAuthError(msgs[err.code] || err.message);
+  } finally { btn.disabled = false; btn.textContent = 'Sign In'; }
+}
+
+// ══════════ SIGN UP ══════════
+async function handleSignUp() {
+  const fb = window._firebase;
+  if (!fb) { showAuthError('Firebase not configured.'); return; }
+  const name = document.getElementById('suName').value.trim();
+  const email = document.getElementById('suEmail').value.trim();
+  const pw    = document.getElementById('suPassword').value;
+
+  if (!name || !email || !pw) { showAuthError('Please fill all fields.'); return; }
+  if (pw.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
+
+  // Librarian code check
+  if (selectedRole === 'librarian') {
+    const code = document.getElementById('libCode').value;
+    if (code !== LIBRARIAN_SECRET) { showAuthError('Invalid librarian authorization code.'); return; }
+  }
+
+  const btn = document.getElementById('suBtn');
+  btn.disabled = true; btn.textContent = 'Creating account…';
+  try {
+    const cred = await fb.createUserWithEmailAndPassword(fb.auth, email, pw);
+    await fb.updateProfile(cred.user, { displayName: name });
+    await fb.setDoc(fb.doc(fb.db, 'users', cred.user.uid), {
+      name, email, role: selectedRole, issuedBooks: [], createdAt: new Date().toISOString()
+    });
+    showToast(`Welcome to KIT Library, ${name}! 🎉`);
+  } catch(err) {
+    const msgs = {
+      'auth/email-already-in-use':'An account with this email already exists.',
+      'auth/invalid-email':'Please enter a valid email.',
+      'auth/weak-password':'Password must be at least 6 characters.'
+    };
+    showAuthError(msgs[err.code] || err.message);
+  } finally { btn.disabled = false; btn.textContent = 'Create Account'; }
+}
+
+// ══════════ GOOGLE AUTH ══════════
+async function handleGoogleAuth() {
+  const fb = window._firebase;
+  if (!fb) { showAuthError('Firebase not configured.'); return; }
+
+  // Librarian cannot use Google for new signup (no way to verify role securely)
+  if (selectedRole === 'librarian' && document.getElementById('signupForm').style.display !== 'none') {
+    showAuthError('Librarians must register with email and authorization code.');
+    return;
+  }
+
+  try {
+    const result = await fb.signInWithPopup(fb.auth, fb.googleProvider);
+    const user = result.user;
+
+    // Check if user already has a conflicting role
+    const snap = await fb.getDoc(fb.doc(fb.db, 'users', user.uid));
+    if (snap.exists()) {
+      const storedRole = snap.data().role || 'student';
+      if (storedRole !== selectedRole) {
+        await fb.signOut(fb.auth);
+        showAuthError(`This Google account is registered as a ${storedRole}. Please select the correct role.`);
+        return;
+      }
+    } else {
+      // New Google user — save to Firestore as student
+      await fb.setDoc(fb.doc(fb.db, 'users', user.uid), {
+        name: user.displayName || '',
+        email: user.email,
+        role: 'student',
+        issuedBooks: [],
+        createdAt: new Date().toISOString()
+      });
+    }
+    showToast(`Welcome, ${user.displayName || user.email}! 👋`);
+  } catch(err) {
+    if (err.code !== 'auth/popup-closed-by-user') {
+      showAuthError(err.message || 'Google sign-in failed.');
+    }
+  }
+}
+
+// ══════════ SIGN OUT ══════════
+async function handleSignOut() {
+  const fb = window._firebase;
+  if (!fb) return;
+  await fb.signOut(fb.auth);
+  myIssuedBookIds = new Set();
+  closeUserDropdown();
+  showToast('Signed out. See you soon! 👋');
+}
+
+// ══════════ HEADER USER UPDATE ══════════
+function updateHeaderUser(user) {
+  const name = user.displayName || user.email.split('@')[0];
+  const role = window.currentUserRole || 'student';
+  document.getElementById('userName').textContent = name;
+  document.getElementById('userInitial').textContent = name[0].toUpperCase();
+  document.getElementById('dropdownName').textContent = name;
+  document.getElementById('dropdownEmail').textContent = user.email;
+
+  // Photo from Google
+  if (user.photoURL) {
+    document.getElementById('userAvatar').innerHTML = `<img src="${user.photoURL}" alt="${name}">`;
+  } else {
+    document.getElementById('userAvatar').innerHTML = `<span id="userInitial">${name[0].toUpperCase()}</span>`;
+  }
+
+  const roleBadge = document.getElementById('roleBadge');
+  roleBadge.textContent = role === 'librarian' ? '🔑 Librarian' : '🎓 Student';
+  roleBadge.className = 'role-badge ' + role;
+
+  // Show/hide mobile tabs
+  if (role === 'student') {
+    document.getElementById('mobileStudentBtn').style.display = 'flex';
+    document.getElementById('mobileAdminBtn').style.display = 'none';
+    document.getElementById('myBooksLink').style.display = 'flex';
+  } else {
+    document.getElementById('mobileStudentBtn').style.display = 'none';
+    document.getElementById('mobileAdminBtn').style.display = 'flex';
+    document.getElementById('myBooksLink').style.display = 'none';
+  }
+  document.getElementById('userSubtext').textContent = role === 'librarian' ? 'Librarian Access' : '📖 0 books issued';
+}
+
+// ══════════ MY BOOKS (Firebase) ══════════
+async function loadMyBooks() {
+  if (!window.currentUser || !window._firebase) return;
+  const fb = window._firebase;
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, 'users', window.currentUser.uid));
+    const data = snap.exists() ? snap.data() : {};
+    const issued = data.issuedBooks || [];
+    myIssuedBookIds = new Set(issued.map(b => b.bookId));
+
+    const count = issued.length;
+    document.getElementById('dropdownBooksCount').textContent = count;
+    document.getElementById('userSubtext').textContent = `📖 ${count} book${count!==1?'s':''} issued`;
+
+    const section = document.getElementById('myBooksSection');
+    const list = document.getElementById('myBooksList');
+    section.style.display = 'block';
+
+    const name = window.currentUser.displayName || 'there';
+    document.getElementById('heroGreeting').textContent = `Hello, ${name.split(' ')[0]}! 👋`;
+
+    if (!issued.length) {
+      list.innerHTML = '<div class="my-books-empty">No books issued yet. Browse below to get started!</div>';
+    } else {
+      list.innerHTML = issued.map(b => `
+        <div class="my-book-item">
+          <div style="font-size:1.5rem">📚</div>
+          <div class="my-book-item-info">
+            <div class="my-book-title">${b.title}</div>
+            <div class="my-book-meta">${b.author} · Shelf ${b.shelf}</div>
+            <div class="my-book-date">Issued: ${new Date(b.issuedAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
+          </div>
+          <button class="btn btn-sm btn-success" onclick="returnBook(${b.bookId})">📥 Return</button>
+        </div>
+      `).join('');
+    }
+    renderStudentGrid();
+  } catch(err) { console.error('loadMyBooks:', err); }
+}
+
+async function issueBook(bookId) {
+  if (!window.currentUser) return;
+  const fb = window._firebase;
+  const book = books.find(b => b.id === bookId);
+  if (!book || book.status !== 'available') return;
+  if (myIssuedBookIds.has(bookId)) { showToast('You already have this book!'); return; }
+
+  try {
+    const userRef = fb.doc(fb.db, 'users', window.currentUser.uid);
+    const snap = await fb.getDoc(userRef);
+    const existing = snap.exists() ? (snap.data().issuedBooks || []) : [];
+
+    const record = { bookId, title: book.title, author: book.author, shelf: book.shelf, issuedAt: new Date().toISOString() };
+    await fb.setDoc(userRef, { issuedBooks: [...existing, record], updatedAt: new Date().toISOString() }, { merge: true });
+
+    book.status = 'issued';
+    book.issuedTo = window.currentUser.uid;
+    book.issuedToName = window.currentUser.displayName || window.currentUser.email;
+    myIssuedBookIds.add(bookId);
+    showToast(`📖 "${book.title.slice(0,36)}…" issued to you!`);
+    loadMyBooks(); refresh();
+  } catch(err) { showToast('Error: ' + err.message); }
+}
+
+async function returnBook(bookId) {
+  if (!window.currentUser) return;
+  const fb = window._firebase;
+  const book = books.find(b => b.id === bookId);
+  if (!book) return;
+  try {
+    const userRef = fb.doc(fb.db, 'users', window.currentUser.uid);
+    const snap = await fb.getDoc(userRef);
+    const filtered = (snap.exists() ? snap.data().issuedBooks || [] : []).filter(b => b.bookId !== bookId);
+    await fb.setDoc(userRef, { issuedBooks: filtered, updatedAt: new Date().toISOString() }, { merge: true });
+    book.status = 'available'; book.issuedTo = null; book.issuedToName = null;
+    myIssuedBookIds.delete(bookId);
+    showToast(`✅ "${book.title.slice(0,36)}…" returned!`);
+    loadMyBooks(); refresh();
+  } catch(err) { showToast('Error: ' + err.message); }
+}
+
+function scrollToMyBooks() {
+  switchView('student');
+  closeUserDropdown();
+  setTimeout(() => document.getElementById('myBooksSection')?.scrollIntoView({ behavior:'smooth' }), 100);
+}
+
+// ══════════ HELPERS ══════════
+function getUnique(arr, key) { return [...new Set(arr.map(b => b[key]).filter(Boolean))].sort(); }
+
+function populateFilters() {
+  const shelves = getUnique(books,'shelf'), genres = getUnique(books,'genre');
+  ['filterShelf','adminFilterShelf'].forEach(id => {
+    const sel = document.getElementById(id); if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All Shelves</option>' + shelves.map(s=>`<option value="${s}">${s}</option>`).join('');
+    sel.value = cur;
+  });
+  const gs = document.getElementById('filterGenre'); if (!gs) return;
+  const cg = gs.value;
+  gs.innerHTML = '<option value="">All Genres</option>' + genres.map(g=>`<option value="${g}">${g}</option>`).join('');
+  gs.value = cg;
+}
+
+function getFilteredBooks(searchId, shelfId, statusId, genreId) {
+  const q = (document.getElementById(searchId)?.value||'').toLowerCase().trim();
+  const shelf = document.getElementById(shelfId)?.value||'';
+  const status = document.getElementById(statusId)?.value||'';
+  const genre = genreId ? (document.getElementById(genreId)?.value||'') : '';
+  return books.filter(b => {
+    const hay = `${b.title} ${b.author} ${b.genre} ${b.shelf}`.toLowerCase();
+    return (!q||hay.includes(q)) && (!shelf||b.shelf===shelf) && (!status||b.status===status) && (!genre||b.genre===genre);
+  });
+}
+
+function statusBadge(s) {
+  return s==='available' ? `<span class="book-status available">Available</span>` : `<span class="book-status issued">Issued</span>`;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function showAuthError(msg) { const e=document.getElementById('authError'); e.textContent=msg; e.classList.add('show'); document.getElementById('authSuccess').classList.remove('show'); }
+function showAuthSuccess(msg) { const e=document.getElementById('authSuccess'); e.textContent=msg; e.classList.add('show'); document.getElementById('authError').classList.remove('show'); }
+function clearAuthMessages() { document.getElementById('authError').classList.remove('show'); document.getElementById('authSuccess').classList.remove('show'); }
+
+// ══════════ STUDENT GRID ══════════
+function renderStudentGrid() {
+  const filtered = getFilteredBooks('studentSearch','filterShelf','filterStatus','filterGenre');
+  document.getElementById('resultsMeta').textContent = `${filtered.length} book${filtered.length!==1?'s':''} found`;
+  const grid = document.getElementById('bookGrid');
+  if (!filtered.length) { grid.innerHTML = `<div class="no-results"><div class="emoji">📭</div><div>No books match your search.</div></div>`; return; }
+
+  grid.innerHTML = filtered.map(b => {
+    const isMine = myIssuedBookIds.has(b.id);
+    let action = '';
+    if (isMine) action = `<button class="btn btn-sm btn-success" onclick="returnBook(${b.id})">📥 Return</button><span class="my-issued-tag">✓ Yours</span>`;
+    else if (b.status==='available') action = `<button class="btn btn-sm btn-blue" onclick="issueBook(${b.id})">📤 Issue to Me</button>`;
+    return `
+      <div class="book-card">
+        <span class="book-card-shelf">${b.shelf}</span>
+        <div class="book-card-title">${b.title}</div>
+        <div class="book-card-author">— ${b.author}</div>
+        <div class="book-card-genre">${b.genre}</div><br>
+        ${statusBadge(b.status)}
+        ${action ? `<div class="book-card-actions">${action}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+// ══════════ ADMIN VIEW ══════════
+function renderStats() {
+  const total=books.length, avail=books.filter(b=>b.status==='available').length;
+  const issued=books.filter(b=>b.status==='issued').length, shelves=getUnique(books,'shelf').length;
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-label">Total Books</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--green)">${avail}</div><div class="stat-label">Available</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--accent2)">${issued}</div><div class="stat-label">Issued</div></div>
+    <div class="stat-card"><div class="stat-num">${shelves}</div><div class="stat-label">Shelves</div></div>
+  `;
+}
+
+function renderAdminTable() {
+  const filtered = getFilteredBooks('adminSearch','adminFilterShelf','adminFilterStatus',null);
+  const tbody = document.getElementById('adminTableBody');
+  if (!filtered.length) { tbody.innerHTML=`<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)">No books found.</td></tr>`; return; }
+  tbody.innerHTML = filtered.map((b,i) => `
+    <tr>
+      <td style="color:var(--muted);font-family:'DM Mono',monospace;font-size:0.75rem">${i+1}</td>
+      <td class="title-cell">${b.title}</td>
+      <td class="author-cell">${b.author}</td>
+      <td style="font-size:0.78rem;color:var(--muted)">${b.genre}</td>
+      <td><span class="shelf-badge">${b.shelf}</span></td>
+      <td>${statusBadge(b.status)}</td>
+      <td style="font-size:0.78rem;color:var(--muted)">${b.issuedToName||'—'}</td>
+      <td class="actions-cell">
+        <button class="btn btn-sm btn-ghost" onclick="openEditModal(${b.id})">✏️ Edit</button>
+        <button class="btn btn-sm ${b.status==='available'?'btn-warn':'btn-success'}" onclick="toggleStatus(${b.id})" style="margin:0 4px">
+          ${b.status==='available'?'📤 Issue':'📥 Return'}
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="deleteBook(${b.id})">🗑</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function toggleStatus(id) {
+  const b = books.find(x=>x.id===id); if(!b) return;
+  b.status = b.status==='available'?'issued':'available';
+  if(b.status==='available'){b.issuedTo=null;b.issuedToName=null;}
+  showToast(`"${b.title.slice(0,30)}…" marked as ${b.status}`);
+  refresh();
+}
+
+function deleteBook(id) {
+  const b=books.find(x=>x.id===id);
+  if(!b||!confirm(`Delete "${b.title}"?`)) return;
+  books=books.filter(x=>x.id!==id); showToast('Book removed.'); refresh();
+}
+
+// ══════════ ADD / EDIT MODAL ══════════
+function openAddModal() {
+  editingId=null;
+  document.getElementById('modalTitle').textContent='Add New Book';
+  ['editTitle','editAuthor','editGenre','editShelf'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('editStatus').value='available';
+  document.getElementById('editModal').classList.add('open');
+}
+
+function openEditModal(id) {
+  const b=books.find(x=>x.id===id); if(!b) return;
+  editingId=id;
+  document.getElementById('modalTitle').textContent='Edit Book';
+  document.getElementById('editTitle').value=b.title;
+  document.getElementById('editAuthor').value=b.author;
+  document.getElementById('editGenre').value=b.genre;
+  document.getElementById('editShelf').value=b.shelf;
+  document.getElementById('editStatus').value=b.status;
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('editModal').classList.remove('open'); }
+
+function saveEdit() {
+  const title=document.getElementById('editTitle').value.trim();
+  const author=document.getElementById('editAuthor').value.trim();
+  const genre=document.getElementById('editGenre').value.trim();
+  const shelf=document.getElementById('editShelf').value.trim().toUpperCase();
+  const status=document.getElementById('editStatus').value;
+  if(!title||!author||!shelf){alert('Title, Author, and Shelf are required.'); return;}
+  if(editingId) {
+    const b=books.find(x=>x.id===editingId);
+    Object.assign(b,{title,author,genre,shelf,status});
+    showToast('Book updated.');
+  } else {
+    books.push({id:nextId++,title,author,genre,shelf,status,issuedTo:null,issuedToName:null});
+    showToast('Book added!');
+  }
+  closeModal(); refresh();
+}
+
+// ══════════ VIEW SWITCH ══════════
+function switchView(view) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById(`view-${view}`)?.classList.add('active');
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.mobile-tabs button').forEach(b=>b.classList.remove('active'));
+  if(view==='student') {
+    document.querySelectorAll('.mode-btn')[0]?.classList.add('active');
+    document.getElementById('mobileStudentBtn')?.classList.add('active');
+  } else {
+    document.querySelectorAll('.mode-btn')[0]?.classList.add('active');
+    document.getElementById('mobileAdminBtn')?.classList.add('active');
+  }
+}
+
+// ══════════ USER DROPDOWN ══════════
+function toggleUserDropdown() { document.getElementById('userDropdown').classList.toggle('open'); }
+function closeUserDropdown() { document.getElementById('userDropdown').classList.remove('open'); }
+document.addEventListener('click', e => { if(!e.target.closest('.user-badge-wrapper')) closeUserDropdown(); });
+
+// ══════════ REFRESH ══════════
+function refresh() {
+  populateFilters();
+  renderStudentGrid();
+  renderStats();
+  renderAdminTable();
+}
+
+// Close modals on backdrop
+document.getElementById('editModal').addEventListener('click', function(e){ if(e.target===this) closeModal(); });
+
+// Init
+refresh();
+</script>
+</body>
+</html>
