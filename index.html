@@ -31,11 +31,11 @@
   // ════════════════════════════════════════════════════════════
   const firebaseConfig = {
     apiKey: "AIzaSyBDlN87xrd8NP_PQ4CIsV5q-P78w8k80Ms",
-    authDomain: "library-5015d.firebaseapp.com",
-    projectId: "library-5015d",
-    storageBucket: "library-5015d.firebasestorage.app",
-    messagingSenderId: "25135880670",
-    appId: "1:25135880670:web:0885d13d72ee38061ae54f"
+  authDomain: "library-5015d.firebaseapp.com",
+  projectId: "library-5015d",
+  storageBucket: "library-5015d.firebasestorage.app",
+  messagingSenderId: "25135880670",
+  appId: "1:25135880670:web:0885d13d72ee38061ae54f"
   };
 
   const app  = initializeApp(firebaseConfig);
@@ -64,8 +64,10 @@
       document.getElementById('authOverlay').style.display = 'none';
       document.getElementById('appShell').style.display = 'block';
       updateHeaderUser(user);
+      // Sync book statuses from Firestore on every login
+      syncBooksFromFirestore();
+
       if (window.currentUserRole === 'librarian') {
-        // Show librarian-only nav
         document.getElementById('librarianNav').style.display = 'flex';
         document.getElementById('studentOnlyBtns').style.display = 'none';
         switchView('admin');
@@ -1331,6 +1333,28 @@ function updateHeaderUser(user) {
   document.getElementById('userSubtext').textContent = role === 'librarian' ? 'Librarian Access' : '📖 0 books issued';
 }
 
+// ══════════ SYNC BOOK STATUSES FROM FIRESTORE ══════════
+// Reads the 'books' collection from Firestore on every login
+// so the librarian always sees who has which book
+async function syncBooksFromFirestore() {
+  if (!window._firebase) return;
+  const fb = window._firebase;
+  try {
+    const booksSnap = await fb.getDocs(fb.collection(fb.db, 'books'));
+    booksSnap.forEach(docSnap => {
+      const data = docSnap.data();
+      const localBook = books.find(b => b.id === data.bookId);
+      if (localBook) {
+        localBook.status      = data.status      || 'available';
+        localBook.issuedTo    = data.issuedTo    || null;
+        localBook.issuedToName= data.issuedToName|| null;
+      }
+    });
+    refresh();
+  } catch(err) { console.warn('syncBooks error:', err.message); }
+}
+
+
 // ══════════ MY BOOKS (Firebase) ══════════
 async function loadMyBooks() {
   if (!window.currentUser || !window._firebase) return;
@@ -1378,19 +1402,34 @@ async function issueBook(bookId) {
   if (!book || book.status !== 'available') return;
   if (myIssuedBookIds.has(bookId)) { showToast('You already have this book!'); return; }
 
+  const userName = window.currentUser.displayName || window.currentUser.email;
+  const issuedAt = new Date().toISOString();
+
   try {
+    // 1. Save to user record
     const userRef = fb.doc(fb.db, 'users', window.currentUser.uid);
     const snap = await fb.getDoc(userRef);
     const existing = snap.exists() ? (snap.data().issuedBooks || []) : [];
+    const record = { bookId, title: book.title, author: book.author, shelf: book.shelf, issuedAt };
+    await fb.setDoc(userRef, { issuedBooks: [...existing, record], updatedAt: issuedAt }, { merge: true });
 
-    const record = { bookId, title: book.title, author: book.author, shelf: book.shelf, issuedAt: new Date().toISOString() };
-    await fb.setDoc(userRef, { issuedBooks: [...existing, record], updatedAt: new Date().toISOString() }, { merge: true });
+    // 2. Save to Firestore books collection so librarian sees issuedTo
+    const bookRef = fb.doc(fb.db, 'books', String(bookId));
+    await fb.setDoc(bookRef, {
+      bookId, title: book.title, author: book.author, shelf: book.shelf,
+      status: 'issued',
+      issuedTo: window.currentUser.uid,
+      issuedToName: userName,
+      issuedToEmail: window.currentUser.email,
+      issuedAt
+    });
 
+    // 3. Update local state
     book.status = 'issued';
     book.issuedTo = window.currentUser.uid;
-    book.issuedToName = window.currentUser.displayName || window.currentUser.email;
+    book.issuedToName = userName;
     myIssuedBookIds.add(bookId);
-    showToast(`📖 "${book.title.slice(0,36)}…" issued to you!`);
+    showToast('Issued: "' + book.title.slice(0,36) + '..."');
     loadMyBooks(); refresh();
   } catch(err) { showToast('Error: ' + err.message); }
 }
@@ -1401,16 +1440,27 @@ async function returnBook(bookId) {
   const book = books.find(b => b.id === bookId);
   if (!book) return;
   try {
+    // 1. Remove from user record
     const userRef = fb.doc(fb.db, 'users', window.currentUser.uid);
     const snap = await fb.getDoc(userRef);
     const filtered = (snap.exists() ? snap.data().issuedBooks || [] : []).filter(b => b.bookId !== bookId);
     await fb.setDoc(userRef, { issuedBooks: filtered, updatedAt: new Date().toISOString() }, { merge: true });
+
+    // 2. Mark available in Firestore books collection
+    const bookRef = fb.doc(fb.db, 'books', String(bookId));
+    await fb.setDoc(bookRef, {
+      bookId, title: book.title, author: book.author, shelf: book.shelf,
+      status: 'available', issuedTo: null, issuedToName: null, issuedToEmail: null, issuedAt: null
+    });
+
+    // 3. Update local state
     book.status = 'available'; book.issuedTo = null; book.issuedToName = null;
     myIssuedBookIds.delete(bookId);
-    showToast(`✅ "${book.title.slice(0,36)}…" returned!`);
+    showToast('Returned: "' + book.title.slice(0,36) + '..."');
     loadMyBooks(); refresh();
   } catch(err) { showToast('Error: ' + err.message); }
 }
+
 
 function scrollToMyBooks() {
   switchView('student');
