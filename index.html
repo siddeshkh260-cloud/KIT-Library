@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -30,12 +30,12 @@
   //  Firebase Console → Project Settings → Your Apps → Web App
   // ════════════════════════════════════════════════════════════
   const firebaseConfig = {
-    apiKey: "AIzaSyBDlN87xrd8NP_PQ4CIsV5q-P78w8k80Ms",
-  authDomain: "library-5015d.firebaseapp.com",
-  projectId: "library-5015d",
-  storageBucket: "library-5015d.firebasestorage.app",
-  messagingSenderId: "25135880670",
-  appId: "1:25135880670:web:0885d13d72ee38061ae54f"
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
   };
 
   const app  = initializeApp(firebaseConfig);
@@ -71,11 +71,18 @@
         document.getElementById('librarianNav').style.display = 'flex';
         document.getElementById('studentOnlyBtns').style.display = 'none';
         switchView('admin');
+        // Start polling for return requests every 15 seconds
+        pollReturnRequests();
+        if (!window._returnPollInterval) {
+          window._returnPollInterval = setInterval(pollReturnRequests, 15000);
+        }
       } else {
         document.getElementById('librarianNav').style.display = 'none';
         document.getElementById('studentOnlyBtns').style.display = 'flex';
         switchView('student');
         loadMyBooks();
+        // Clear any existing poll
+        if (window._returnPollInterval) { clearInterval(window._returnPollInterval); window._returnPollInterval = null; }
       }
     } else {
       window.currentUser = null;
@@ -910,6 +917,33 @@ td.actions-cell{ white-space: nowrap; }
           <label>Full Name</label>
           <input class="auth-input" type="text" id="suName" placeholder="Your full name">
         </div>
+        <div class="auth-field" id="usnFieldWrap">
+          <label>USN (University Seat Number)</label>
+          <input class="auth-input" type="text" id="suUSN" placeholder="e.g. 4KT21CV001" style="text-transform:uppercase">
+        </div>
+        <div class="auth-field" id="branchFieldWrap">
+          <label>Branch / Department</label>
+          <select class="auth-input" id="suBranch">
+            <option value="">Select Branch</option>
+            <option>Civil Engineering</option>
+            <option>Mechanical Engineering</option>
+            <option>Electrical Engineering</option>
+            <option>Electronics & Communication</option>
+            <option>Computer Science</option>
+            <option>Information Science</option>
+            <option>Chemical Engineering</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="auth-field" id="semesterFieldWrap">
+          <label>Semester</label>
+          <select class="auth-input" id="suSemester">
+            <option value="">Select Semester</option>
+            <option>1st Sem</option><option>2nd Sem</option><option>3rd Sem</option>
+            <option>4th Sem</option><option>5th Sem</option><option>6th Sem</option>
+            <option>7th Sem</option><option>8th Sem</option>
+          </select>
+        </div>
         <div class="auth-field">
           <label>Email Address</label>
           <input class="auth-input" type="email" id="suEmail" placeholder="you@example.com">
@@ -986,6 +1020,9 @@ td.actions-cell{ white-space: nowrap; }
         </div>
         <div class="user-dropdown-item" id="myBooksLink" onclick="scrollToMyBooks()" style="display:none">
           📚 My Issued Books <span class="badge-count" id="dropdownBooksCount">0</span>
+        </div>
+        <div class="user-dropdown-item" id="viewProfileLink" onclick="openProfileModal()" style="display:none">
+          👤 My Profile &amp; Details
         </div>
         <div class="user-dropdown-item danger" onclick="handleSignOut()">🚪 Sign Out</div>
       </div>
@@ -1119,6 +1156,73 @@ td.actions-cell{ white-space: nowrap; }
   </div>
   <button class="btn btn-primary btn-sm" onclick="installPWA()">Install</button>
   <button class="btn btn-ghost btn-sm" onclick="dismissPWA()">Later</button>
+</div>
+
+<!-- ── STUDENT PROFILE MODAL ── -->
+<div class="modal-bg" id="profileModal">
+  <div class="modal" style="max-width:440px">
+    <h3 style="margin-bottom:6px">👤 My Profile</h3>
+    <div style="border-radius:var(--r-md);background:linear-gradient(135deg,var(--ink),#2c3e6b);padding:20px;color:white;margin-bottom:18px;display:flex;align-items:center;gap:16px">
+      <div id="profileAvatar" style="width:56px;height:56px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;flex-shrink:0;overflow:hidden"></div>
+      <div>
+        <div id="profileName" style="font-weight:700;font-size:1rem"></div>
+        <div id="profileEmail" style="font-size:0.75rem;color:#bbb;margin-top:2px"></div>
+        <div style="margin-top:6px"><span style="background:rgba(39,174,96,0.3);color:#2ecc71;padding:3px 10px;border-radius:20px;font-size:0.68rem;font-weight:700">🎓 Student</span></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+      <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px">
+        <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">USN</div>
+        <div id="profileUSN" style="font-family:'DM Mono',monospace;font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
+      </div>
+      <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px">
+        <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Semester</div>
+        <div id="profileSemester" style="font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
+      </div>
+      <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;grid-column:1/-1">
+        <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Branch / Department</div>
+        <div id="profileBranch" style="font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
+      </div>
+    </div>
+    <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;margin-bottom:18px">
+      <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Currently Issued Books</div>
+      <div id="profileIssuedList" style="font-size:0.84rem;color:var(--ink)">Loading…</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeProfileModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── RETURN REQUEST POPUP (librarian notification) ── -->
+<div id="returnNotifOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:8000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:white;border-radius:var(--r-xl);width:100%;max-width:400px;box-shadow:0 32px 80px rgba(0,0,0,0.4);overflow:hidden;animation:slideUp 0.3s ease;margin:auto">
+    <div style="background:linear-gradient(135deg,#f39c12,#e67e22);padding:18px 22px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:2rem">📬</span>
+      <div>
+        <div style="color:white;font-weight:700;font-size:1rem">Return Request Pending</div>
+        <div style="color:rgba(255,255,255,0.85);font-size:0.75rem">Waiting for librarian confirmation</div>
+      </div>
+    </div>
+    <div style="padding:20px 22px">
+      <div style="font-size:0.88rem;color:var(--muted);margin-bottom:14px">The following return is awaiting your approval:</div>
+      <div id="returnNotifBookTitle" style="font-weight:700;font-size:1rem;color:var(--ink);margin-bottom:6px"></div>
+      <div id="returnNotifStudent" style="font-size:0.82rem;color:var(--muted);margin-bottom:4px"></div>
+      <div id="returnNotifUSN" style="font-size:0.78rem;color:var(--blue);font-family:'DM Mono',monospace;margin-bottom:16px"></div>
+      <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:var(--r-sm);padding:10px 14px;font-size:0.78rem;color:#795548;margin-bottom:18px">
+        🔍 Please verify the physical book has been returned before confirming.
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-success" style="flex:1;justify-content:center" onclick="confirmReturn(true)">✅ Yes, Book Returned</button>
+        <button class="btn btn-danger" style="flex:1;justify-content:center" onclick="confirmReturn(false)">❌ No, Not Yet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── PENDING RETURNS BADGE (librarian) ── -->
+<div id="pendingReturnsBadge" style="display:none;position:fixed;bottom:calc(var(--tab-bar-h)+14px);right:16px;background:var(--accent2);color:white;border-radius:var(--r-lg);padding:12px 18px;font-size:0.84rem;font-weight:600;box-shadow:var(--shadow-md);z-index:7000;cursor:pointer;animation:slideUp 0.3s ease" onclick="showNextPendingReturn()">
+  📬 <span id="pendingReturnsCount">0</span> Return Request(s) Pending
 </div>
 
 <div id="toast"></div>
@@ -1475,8 +1579,13 @@ function selectRole(role) {
   document.getElementById('roleLibrarian').classList.toggle('active', role === 'librarian');
   document.getElementById('librarianNote').style.display = role === 'librarian' ? 'block' : 'none';
   document.getElementById('libCodeWrap').style.display = (role === 'librarian' && document.getElementById('signupForm').style.display !== 'none') ? 'block' : 'none';
-  // Hide google for librarian signup for security
+  // Show student-only fields
   const isSignup = document.getElementById('signupForm').style.display !== 'none';
+  ['usnFieldWrap','branchFieldWrap','semesterFieldWrap'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (isSignup && role === 'student') ? 'block' : 'none';
+  });
+  // Hide google for librarian signup for security
   const googleSignupBtn = document.getElementById('googleSignupBtn');
   const googleDivider = document.getElementById('googleDividerSignup');
   if (isSignup && role === 'librarian') {
@@ -1585,6 +1694,17 @@ async function handleSignUp() {
   if (!name || !email || !pw) { showAuthError('Please fill all fields.'); return; }
   if (pw.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
 
+  // Student-specific fields
+  let usn = '', branch = '', semester = '';
+  if (selectedRole === 'student') {
+    usn      = document.getElementById('suUSN').value.trim().toUpperCase();
+    branch   = document.getElementById('suBranch').value;
+    semester = document.getElementById('suSemester').value;
+    if (!usn)      { showAuthError('Please enter your USN.'); return; }
+    if (!branch)   { showAuthError('Please select your branch.'); return; }
+    if (!semester) { showAuthError('Please select your semester.'); return; }
+  }
+
   // Librarian code check
   if (selectedRole === 'librarian') {
     const code = document.getElementById('libCode').value;
@@ -1596,9 +1716,11 @@ async function handleSignUp() {
   try {
     const cred = await fb.createUserWithEmailAndPassword(fb.auth, email, pw);
     await fb.updateProfile(cred.user, { displayName: name });
-    await fb.setDoc(fb.doc(fb.db, 'users', cred.user.uid), {
+    const profile = {
       name, email, role: selectedRole, issuedBooks: [], createdAt: new Date().toISOString()
-    });
+    };
+    if (selectedRole === 'student') { profile.usn = usn; profile.branch = branch; profile.semester = semester; }
+    await fb.setDoc(fb.doc(fb.db, 'users', cred.user.uid), profile);
     showToast(`Welcome to KIT Library, ${name}! 🎉`);
   } catch(err) {
     const msgs = {
@@ -1688,11 +1810,13 @@ function updateHeaderUser(user) {
     document.getElementById('mobileAdminBtn').style.display = 'none';
     document.getElementById('mobileTabBar').style.display = 'flex';
     document.getElementById('myBooksLink').style.display = 'flex';
+    document.getElementById('viewProfileLink').style.display = 'flex';
   } else {
     document.getElementById('mobileStudentBtn').style.display = 'none';
     document.getElementById('mobileAdminBtn').style.display = 'flex';
     document.getElementById('mobileTabBar').style.display = 'flex';
     document.getElementById('myBooksLink').style.display = 'none';
+    document.getElementById('viewProfileLink').style.display = 'none';
   }
   document.getElementById('userSubtext').textContent = role === 'librarian' ? 'Librarian Access' : '📖 0 books issued';
 }
@@ -1729,6 +1853,14 @@ async function loadMyBooks() {
     const issued = data.issuedBooks || [];
     myIssuedBookIds = new Set(issued.map(b => b.bookId));
 
+    // Track which books have pending return requests
+    let pendingReturnBookIds = new Set();
+    try {
+      const retSnap = await fb.getDocs(fb.query(fb.collection(fb.db,'returnRequests'), fb.where('studentUid','==',window.currentUser.uid), fb.where('status','==','pending')));
+      retSnap.forEach(d => pendingReturnBookIds.add(d.data().bookId));
+    } catch(e) {}
+    window._pendingReturnBookIds = pendingReturnBookIds;
+
     const count = issued.length;
     document.getElementById('dropdownBooksCount').textContent = count;
     document.getElementById('userSubtext').textContent = `📖 ${count} book${count!==1?'s':''} issued`;
@@ -1743,17 +1875,23 @@ async function loadMyBooks() {
     if (!issued.length) {
       list.innerHTML = '<div class="my-books-empty">No books issued yet. Browse below to get started!</div>';
     } else {
-      list.innerHTML = issued.map(b => `
+      list.innerHTML = issued.map(b => {
+        const isPending = window._pendingReturnBookIds && window._pendingReturnBookIds.has(b.bookId);
+        const returnBtn = isPending
+          ? `<button class="btn btn-sm btn-warn" disabled style="opacity:0.75">⏳ Pending…</button>`
+          : `<button class="btn btn-sm btn-success" onclick="returnBook(${b.bookId})">📥 Return</button>`;
+        return `
         <div class="my-book-item">
           <div style="font-size:1.5rem">📚</div>
           <div class="my-book-item-info">
             <div class="my-book-title">${b.title}</div>
             <div class="my-book-meta">${b.author} · Shelf ${b.shelf}</div>
             <div class="my-book-date">Issued: ${new Date(b.issuedAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
+            ${isPending ? '<div style="font-size:0.7rem;color:var(--accent2);margin-top:2px">⏳ Return request sent — awaiting librarian approval</div>' : ''}
           </div>
-          <button class="btn btn-sm btn-success" onclick="returnBook(${b.bookId})">📥 Return</button>
-        </div>
-      `).join('');
+          ${returnBtn}
+        </div>`;
+      }).join('');
     }
     renderStudentGrid();
   } catch(err) { console.error('loadMyBooks:', err); }
@@ -1798,32 +1936,164 @@ async function issueBook(bookId) {
   } catch(err) { showToast('Error: ' + err.message); }
 }
 
+// ══════════ RETURN REQUESTS (Firestore-backed notification) ══════════
+let pendingReturnRequests = []; // array of {reqId, bookId, studentUid, studentName, studentEmail, usn, bookTitle, bookShelf, requestedAt}
+let currentReturnReqId = null;
+
 async function returnBook(bookId) {
   if (!window.currentUser) return;
   const fb = window._firebase;
   const book = books.find(b => b.id === bookId);
   if (!book) return;
+
+  // Create a pending return request in Firestore
   try {
-    // 1. Remove from user record
-    const userRef = fb.doc(fb.db, 'users', window.currentUser.uid);
-    const snap = await fb.getDoc(userRef);
-    const filtered = (snap.exists() ? snap.data().issuedBooks || [] : []).filter(b => b.bookId !== bookId);
-    await fb.setDoc(userRef, { issuedBooks: filtered, updatedAt: new Date().toISOString() }, { merge: true });
-
-    // 2. Mark available in Firestore books collection
-    const bookRef = fb.doc(fb.db, 'books', String(bookId));
-    await fb.setDoc(bookRef, {
-      bookId, title: book.title, author: book.author, shelf: book.shelf,
-      status: 'available', issuedTo: null, issuedToName: null, issuedToEmail: null, issuedAt: null
-    });
-
-    // 3. Update local state
-    book.status = 'available'; book.issuedTo = null; book.issuedToName = null;
-    myIssuedBookIds.delete(bookId);
-    showToast('Returned: "' + book.title.slice(0,36) + '..."');
+    const snap = await fb.getDoc(fb.doc(fb.db, 'users', window.currentUser.uid));
+    const uData = snap.exists() ? snap.data() : {};
+    const reqId = 'ret_' + bookId + '_' + window.currentUser.uid + '_' + Date.now();
+    const req = {
+      reqId, bookId,
+      studentUid: window.currentUser.uid,
+      studentName: uData.name || window.currentUser.displayName || window.currentUser.email,
+      studentEmail: window.currentUser.email,
+      usn: uData.usn || '—',
+      branch: uData.branch || '—',
+      bookTitle: book.title,
+      bookShelf: book.shelf,
+      requestedAt: new Date().toISOString(),
+      status: 'pending'
+    };
+    await fb.setDoc(fb.doc(fb.db, 'returnRequests', reqId), req);
+    showToast('📬 Return request sent! Awaiting librarian confirmation.');
     loadMyBooks(); refresh();
   } catch(err) { showToast('Error: ' + err.message); }
 }
+
+// Librarian: poll for pending return requests
+async function pollReturnRequests() {
+  if (window.currentUserRole !== 'librarian' || !window._firebase) return;
+  const fb = window._firebase;
+  try {
+    const snap = await fb.getDocs(fb.query(fb.collection(fb.db, 'returnRequests'), fb.where('status','==','pending')));
+    pendingReturnRequests = [];
+    snap.forEach(d => pendingReturnRequests.push(d.data()));
+    const badge = document.getElementById('pendingReturnsBadge');
+    const countEl = document.getElementById('pendingReturnsCount');
+    if (pendingReturnRequests.length > 0) {
+      badge.style.display = 'block';
+      countEl.textContent = pendingReturnRequests.length;
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch(e) { /* silent */ }
+}
+
+function showNextPendingReturn() {
+  if (!pendingReturnRequests.length) return;
+  const req = pendingReturnRequests[0];
+  currentReturnReqId = req.reqId;
+  document.getElementById('returnNotifBookTitle').textContent = '📖 ' + req.bookTitle;
+  document.getElementById('returnNotifStudent').textContent = '👤 ' + req.studentName + ' · ' + req.studentEmail;
+  document.getElementById('returnNotifUSN').textContent = 'USN: ' + req.usn + (req.branch && req.branch!=='—' ? '  |  ' + req.branch : '');
+  const overlay = document.getElementById('returnNotifOverlay');
+  overlay.style.display = 'flex';
+}
+
+async function confirmReturn(approved) {
+  document.getElementById('returnNotifOverlay').style.display = 'none';
+  if (!currentReturnReqId || !window._firebase) return;
+  const fb = window._firebase;
+  const req = pendingReturnRequests.find(r => r.reqId === currentReturnReqId);
+  if (!req) return;
+
+  try {
+    if (approved) {
+      // 1. Remove from student's issued books
+      const userRef = fb.doc(fb.db, 'users', req.studentUid);
+      const snap = await fb.getDoc(userRef);
+      const filtered = (snap.exists() ? snap.data().issuedBooks || [] : []).filter(b => b.bookId !== req.bookId);
+      await fb.setDoc(userRef, { issuedBooks: filtered, updatedAt: new Date().toISOString() }, { merge: true });
+
+      // 2. Mark book available
+      const book = books.find(b => b.id === req.bookId);
+      const bookRef = fb.doc(fb.db, 'books', String(req.bookId));
+      await fb.setDoc(bookRef, {
+        bookId: req.bookId,
+        title: book ? book.title : req.bookTitle,
+        author: book ? book.author : '',
+        shelf: req.bookShelf,
+        status: 'available', issuedTo: null, issuedToName: null, issuedToEmail: null, issuedAt: null
+      });
+
+      // 3. Update local state
+      if (book) { book.status = 'available'; book.issuedTo = null; book.issuedToName = null; }
+      showToast('✅ Return confirmed for "' + req.bookTitle.slice(0,32) + '"');
+    } else {
+      showToast('❌ Return declined — book not yet received.');
+    }
+
+    // 4. Delete the request
+    await fb.deleteDoc(fb.doc(fb.db, 'returnRequests', currentReturnReqId));
+    pendingReturnRequests = pendingReturnRequests.filter(r => r.reqId !== currentReturnReqId);
+    currentReturnReqId = null;
+    refresh();
+
+    // If more pending, show next after short delay
+    if (pendingReturnRequests.length > 0) {
+      setTimeout(showNextPendingReturn, 800);
+    } else {
+      document.getElementById('pendingReturnsBadge').style.display = 'none';
+    }
+  } catch(err) { showToast('Error: ' + err.message); }
+}
+
+// ══════════ PROFILE MODAL ══════════
+async function openProfileModal() {
+  closeUserDropdown();
+  document.getElementById('profileModal').classList.add('open');
+  const user = window.currentUser;
+  if (!user) return;
+  const name = user.displayName || user.email.split('@')[0];
+  document.getElementById('profileName').textContent = name;
+  document.getElementById('profileEmail').textContent = user.email;
+  if (user.photoURL) {
+    document.getElementById('profileAvatar').innerHTML = `<img src="${user.photoURL}" style="width:100%;height:100%;object-fit:cover">`;
+  } else {
+    document.getElementById('profileAvatar').textContent = name[0].toUpperCase();
+  }
+  // Load Firestore data
+  if (window._firebase) {
+    const fb = window._firebase;
+    try {
+      const snap = await fb.getDoc(fb.doc(fb.db, 'users', user.uid));
+      const data = snap.exists() ? snap.data() : {};
+      document.getElementById('profileUSN').textContent = data.usn || '—';
+      document.getElementById('profileBranch').textContent = data.branch || '—';
+      document.getElementById('profileSemester').textContent = data.semester || '—';
+      const issued = data.issuedBooks || [];
+      if (!issued.length) {
+        document.getElementById('profileIssuedList').innerHTML = '<span style="color:var(--muted)">No books currently issued.</span>';
+      } else {
+        document.getElementById('profileIssuedList').innerHTML = issued.map(b =>
+          `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span>📚</span>
+            <div><div style="font-weight:600;font-size:0.83rem">${b.title}</div>
+            <div style="font-size:0.72rem;color:var(--muted)">Shelf ${b.shelf} · Issued ${new Date(b.issuedAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div></div>
+          </div>`
+        ).join('');
+      }
+    } catch(e) {
+      document.getElementById('profileUSN').textContent = '—';
+    }
+  }
+}
+
+function closeProfileModal() {
+  document.getElementById('profileModal').classList.remove('open');
+}
+
+// Close profile modal on backdrop click
+document.getElementById('profileModal').addEventListener('click', function(e){ if(e.target===this) closeProfileModal(); });
 
 
 function scrollToMyBooks() {
@@ -1882,8 +2152,14 @@ function renderStudentGrid() {
 
   grid.innerHTML = filtered.map(b => {
     const isMine = myIssuedBookIds.has(b.id);
+    const isPending = window._pendingReturnBookIds && window._pendingReturnBookIds.has(b.id);
     let action = '';
-    if (isMine) action = `<button class="btn btn-sm btn-success" onclick="returnBook(${b.id})">📥 Return</button><span class="my-issued-tag">✓ Yours</span>`;
+    if (isMine) {
+      const returnBtn = isPending
+        ? `<button class="btn btn-sm btn-warn" disabled style="opacity:0.75">⏳ Return Pending…</button>`
+        : `<button class="btn btn-sm btn-success" onclick="returnBook(${b.id})">📥 Return</button>`;
+      action = `${returnBtn}<span class="my-issued-tag">✓ Yours</span>`;
+    }
     else if (b.status==='available') action = `<button class="btn btn-sm btn-blue" onclick="issueBook(${b.id})">📤 Issue to Me</button>`;
     return `
       <div class="book-card">
