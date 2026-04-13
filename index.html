@@ -42,18 +42,7 @@
   const auth = getAuth(app);
   const db   = getFirestore(app);
   const googleProvider = new GoogleAuthProvider();
- const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  ...
-   const firebaseConfig = {
-  apiKey: "AIzaSyBxxxxxxxxxxxxxxxxxxxxxxx",
-  authDomain: "kit-library-12345.firebaseapp.com",
-  projectId: "kit-library-12345",
-  storageBucket: "kit-library-12345.appspot.com",
-  messagingSenderId: "987654321",
-  appId: "1:987654321:web:abc123def456"
-};
+ 
 
   window._firebase = {
     auth, db, googleProvider,
