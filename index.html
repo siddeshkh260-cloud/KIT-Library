@@ -29,23 +29,23 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
 
   // ════════════════════════════════════════════════════════════
-  //  🔧 PASTE YOUR FIREBASE CONFIG HERE
-  //  Firebase Console → Project Settings → Your Apps → Web App
+  //  ✅ FIREBASE CONFIG — already set from your project
   // ════════════════════════════════════════════════════════════
   const firebaseConfig = {
     apiKey: "AIzaSyBDlN87xrd8NP_PQ4CIsV5q-P78w8k80Ms",
-  authDomain: "library-5015d.firebaseapp.com",
-  projectId: "library-5015d",
-  storageBucket: "library-5015d.firebasestorage.app",
-  messagingSenderId: "25135880670",
-  appId: "1:25135880670:web:0885d13d72ee38061ae54f"
+    authDomain: "library-5015d.firebaseapp.com",
+    projectId: "library-5015d",
+    storageBucket: "library-5015d.firebasestorage.app",
+    messagingSenderId: "25135880670",
+    appId: "1:25135880670:web:0885d13d72ee38061ae54f"
   };
 
   // ════════════════════════════════════════════════════════════
   //  🔔 VAPID KEY — Firebase Console → Project Settings →
   //  Cloud Messaging → Web Push Certificates → Generate Key Pair
+  //  Then paste it below:
   // ════════════════════════════════════════════════════════════
-  const VAPID_KEY = "BF6fNuVQ9y2hIpCthZ_7QhpHgNQJYi_SeiYzw_PlOpHYmCNdRVL3zLomJG--bjjKgI_iXp9TSIqH37OpXCYqs6I";
+  const VAPID_KEY = "BGjcEgkfZf71_xHF_7_0F6dNB07Swch760Nt0hUxCbgcfObV9aYuyIMW4eIzsAZyy33LNKb_blIOiNpO1zW4Xvo";
 
   const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
@@ -90,17 +90,26 @@
         document.getElementById('librarianNav').style.display = 'flex';
         document.getElementById('studentOnlyBtns').style.display = 'none';
         switchView('admin');
-        // Start polling for return requests every 15 seconds
+        // Request notification permission for librarian
+        requestNotificationPermission();
+        // Start polling for return requests every 12 seconds
         pollReturnRequests();
         if (!window._returnPollInterval) {
-          window._returnPollInterval = setInterval(pollReturnRequests, 15000);
+          window._returnPollInterval = setInterval(pollReturnRequests, 12000);
         }
       } else {
         document.getElementById('librarianNav').style.display = 'none';
         document.getElementById('studentOnlyBtns').style.display = 'flex';
         switchView('student');
         loadMyBooks();
-        // Clear any existing poll
+        // Request notification permission for student
+        requestNotificationPermission();
+        // Poll for notifications (issue approved/rejected) every 10 seconds
+        checkStudentNotifications();
+        if (!window._studentNotifInterval) {
+          window._studentNotifInterval = setInterval(checkStudentNotifications, 10000);
+        }
+        // Clear any existing librarian poll
         if (window._returnPollInterval) { clearInterval(window._returnPollInterval); window._returnPollInterval = null; }
       }
     } else {
@@ -1266,9 +1275,10 @@ td.actions-cell{ white-space: nowrap; }
           <option>Civil Engineering</option>
           <option>Mechanical Engineering</option>
           <option>Electrical Engineering</option>
-          <option>Electronics & Communication</option>
-          <option>Computer Science</option>
-          <option>Information Science</option>
+          <option>Electronics & Communication Engineering</option>
+          <option>Computer Science Engineering</option>
+          <option>Artificial Intelligence and Machine Learning Engineering</option>
+          <option>Information Science Engineering</option>
           <option>Chemical Engineering</option>
           <option>Other</option>
         </select>
@@ -1328,7 +1338,7 @@ td.actions-cell{ white-space: nowrap; }
 //  SECRET LIBRARIAN CODE — change this!
 //  Store this securely in production
 // ══════════════════════════════════════════
-const LIBRARIAN_SECRET = "KIT@LIB2024";
+const LIBRARIAN_SECRET = "KIT@LIB2026";
 
 // ═══ DATA ═══
 let books = [
@@ -2121,10 +2131,14 @@ async function pollReturnRequests() {
     if (oldBadge) { oldBadge.style.display = count > 0 ? 'block' : 'none'; document.getElementById('pendingReturnsCount').textContent = count; }
 
     // Browser notification for new return requests
-    if (count > (window._prevReturnCount || 0) && Notification.permission === 'granted') {
-      const newest = pendingReturnRequests[pendingReturnRequests.length - 1];
-      if (newest) sendBrowserNotification('📬 Return Request', `${newest.studentName} wants to return "${newest.bookTitle.slice(0,40)}"`);
-    }
+    pendingReturnRequests.forEach(req => {
+      const key = 'lib_notified_ret_' + req.reqId;
+      if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, '1');
+        sendBrowserNotification('📬 Return Request — KIT Library',
+          `${req.studentName} (${req.usn}) wants to return "${req.bookTitle.slice(0,40)}"`);
+      }
+    });
     window._prevReturnCount = count;
 
     renderReturnRequestsPanel();
@@ -2152,14 +2166,15 @@ async function pollIssueRequests() {
     if (btn) { btn.style.display = count > 0 ? 'inline-flex' : 'none'; }
     if (badge) badge.textContent = count;
 
-    // Send browser notification if new requests arrived
-    if (count > prevCount && Notification.permission === 'granted') {
-      const newest = pendingIssueRequests[pendingIssueRequests.length - 1];
-      sendBrowserNotification(
-        '📥 New Issue Request',
-        `${newest.studentName} wants to issue "${newest.bookTitle.slice(0,40)}"`
-      );
-    }
+    // Send browser notification for new requests (deduplicated via localStorage)
+    pendingIssueRequests.forEach(req => {
+      const key = 'lib_notified_iss_' + req.reqId;
+      if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, '1');
+        sendBrowserNotification('📚 Issue Request — KIT Library',
+          `${req.studentName} (${req.usn}) wants to issue "${req.bookTitle.slice(0,40)}"`);
+      }
+    });
 
     renderIssueRequestsPanel();
   } catch(e) { console.warn('pollIssueRequests:', e.message); }
@@ -2276,18 +2291,48 @@ async function checkStudentNotifications() {
     ));
     snap.forEach(async d => {
       const notif = d.data();
-      // Show toast
-      showToast(notif.message);
-      // Show browser notification
-      if (Notification.permission === 'granted') {
-        sendBrowserNotification('KIT Library', notif.message);
-      }
-      // Mark as read
+      const key = 'shown_notif_' + notif.notifId;
+      if (sessionStorage.getItem(key)) return; // already shown this session
+      sessionStorage.setItem(key, '1');
+
+      // Mark as read immediately so it doesn't repeat next poll
       await fb.setDoc(fb.doc(fb.db, 'notifications', notif.notifId), { read: true }, { merge: true });
+
+      const approved = notif.type === 'issue_approved' || notif.type === 'return_approved';
+      const title = approved ? '✅ KIT Library — Request Approved' : '❌ KIT Library — Request Update';
+
+      // 1. Show toast inside the app
+      showToast(notif.message);
+
+      // 2. Show push notification (visible even when phone is locked / app in background)
+      sendBrowserNotification(title, notif.message);
+
+      // 3. Show in-app modal popup for critical approvals
+      if (notif.type === 'issue_approved' || notif.type === 'issue_rejected' ||
+          notif.type === 'return_approved' || notif.type === 'return_rejected') {
+        showStudentNotifPopup(notif);
+      }
     });
-    // Reload books if approved
-    if (!snap.empty) { setTimeout(() => loadMyBooks(), 1000); setTimeout(() => syncBooksFromFirestore(), 1200); }
+    if (!snap.empty) {
+      setTimeout(() => loadMyBooks(), 800);
+      setTimeout(() => syncBooksFromFirestore(), 1000);
+    }
   } catch(e) { console.warn('checkStudentNotifications:', e); }
+}
+
+function showStudentNotifPopup(notif) {
+  const approved = notif.type === 'issue_approved' || notif.type === 'return_approved';
+  const overlay = document.getElementById('studentNotifOverlay');
+  if (!overlay) return;
+  const header = document.getElementById('studentNotifHeader');
+  header.style.background = approved
+    ? 'linear-gradient(135deg,#27ae60,#2ecc71)'
+    : 'linear-gradient(135deg,#c0392b,#e74c3c)';
+  document.getElementById('studentNotifIcon').textContent  = approved ? '🎉' : '❌';
+  document.getElementById('studentNotifTitle').textContent = approved ? 'Request Approved!' : 'Request Update';
+  document.getElementById('studentNotifSub').textContent   = approved ? 'Tap OK to continue' : 'Contact library for help';
+  document.getElementById('studentNotifMsg').textContent   = notif.message;
+  overlay.style.display = 'flex';
 }
 
 function toggleReturnPanel() {
@@ -2562,8 +2607,9 @@ async function requestNotificationPermission() {
   }
 
   try {
-    // Register sw.js (must be in same folder as the HTML file)
-    const swReg = await navigator.serviceWorker.register('/sw.js');
+    // Register sw.js — use relative path so it works on GitHub Pages
+    const swPath = (location.pathname.replace(/\/[^/]*$/, '') || '') + '/sw.js';
+    const swReg = await navigator.serviceWorker.register(swPath);
     console.log('✅ Service worker registered:', swReg.scope);
 
     const fb = window._firebase;
@@ -2605,28 +2651,35 @@ async function requestNotificationPermission() {
 
 function sendBrowserNotification(title, body) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const icon = 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png';
+  const isMobile = /android|iphone|ipad/i.test(navigator.userAgent);
   try {
-    // Prefer service-worker notification (visible even when screen is off / app minimised)
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    // Always prefer service-worker notification — it works even when app is closed/backgrounded
+    if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(reg => {
         reg.showNotification(title, {
           body,
-          icon: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
-          badge: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
-          tag: 'kit-library-' + Date.now(),
-          vibrate: [200, 100, 200],
-          requireInteraction: false
+          icon,
+          badge: icon,
+          tag: 'kit-lib-' + Date.now(),
+          vibrate: [200, 100, 200, 100, 200],
+          requireInteraction: isMobile, // stays until dismissed on mobile
+          actions: [
+            { action: 'open', title: '📖 Open App' },
+            { action: 'dismiss', title: 'Dismiss' }
+          ],
+          data: { url: location.href }
         });
+      }).catch(e => {
+        // Fallback basic notification
+        const n = new Notification(title, { body, icon, tag: 'kit-lib-' + Date.now() });
+        n.onclick = () => { window.focus(); n.close(); };
+        setTimeout(() => n.close(), 10000);
       });
     } else {
-      // Fallback: basic Notification (only works when tab is open)
-      const n = new Notification(title, {
-        body,
-        icon: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
-        tag: 'kit-library-' + Date.now()
-      });
+      const n = new Notification(title, { body, icon, tag: 'kit-lib-' + Date.now() });
       n.onclick = () => { window.focus(); n.close(); };
-      setTimeout(() => n.close(), 8000);
+      setTimeout(() => n.close(), 10000);
     }
   } catch(e) { console.warn('Notification error:', e); }
 }
