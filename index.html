@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="KIT Library">
-<link rel="manifest" id="manifestLink">
+<link rel="manifest" href="manifest.json" id="manifestLink">
 <title>KIT Library — Karavali Institution of Technology</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
@@ -24,30 +24,46 @@
     getFirestore, doc, getDoc, setDoc, collection,
     query, where, getDocs, deleteDoc, orderBy, limit
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import {
+    getMessaging, getToken, onMessage
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
 
   // ════════════════════════════════════════════════════════════
   //  🔧 PASTE YOUR FIREBASE CONFIG HERE
   //  Firebase Console → Project Settings → Your Apps → Web App
   // ════════════════════════════════════════════════════════════
- const firebaseConfig = {
-  apiKey: "AIzaSyBDlN87xrd8NP_PQ4CIsV5q-P78w8k80Ms",
+  const firebaseConfig = {
+    apiKey: "AIzaSyBDlN87xrd8NP_PQ4CIsV5q-P78w8k80Ms",
   authDomain: "library-5015d.firebaseapp.com",
   projectId: "library-5015d",
   storageBucket: "library-5015d.firebasestorage.app",
   messagingSenderId: "25135880670",
   appId: "1:25135880670:web:0885d13d72ee38061ae54f"
-};
+  };
+
+  // ════════════════════════════════════════════════════════════
+  //  🔔 VAPID KEY — Firebase Console → Project Settings →
+  //  Cloud Messaging → Web Push Certificates → Generate Key Pair
+  // ════════════════════════════════════════════════════════════
+  const VAPID_KEY = "BF6fNuVQ9y2hIpCthZ_7QhpHgNQJYi_SeiYzw_PlOpHYmCNdRVL3zLomJG--bjjKgI_iXp9TSIqH37OpXCYqs6I";
+
   const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db   = getFirestore(app);
   const googleProvider = new GoogleAuthProvider();
 
+  // Initialise FCM (needs service worker)
+  let _messaging = null;
+  try { _messaging = getMessaging(app); } catch(e) { console.warn('FCM init:', e.message); }
+
   window._firebase = {
-    auth, db, googleProvider,
+    app, auth, db, googleProvider,
     signInWithEmailAndPassword, createUserWithEmailAndPassword,
     signOut, updateProfile, signInWithPopup,
     sendPasswordResetEmail,
-    doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, orderBy, limit
+    doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, orderBy, limit,
+    messaging: _messaging, getToken, onMessage,
+    VAPID_KEY
   };
 
   onAuthStateChanged(auth, async (user) => {
@@ -938,10 +954,9 @@ td.actions-cell{ white-space: nowrap; }
             <option>Civil Engineering</option>
             <option>Mechanical Engineering</option>
             <option>Electrical Engineering</option>
-            <option>Electronics & Communication  Engineering</option>
-             <option>Artificial Intelligence and Machine Learning Engineering</option>
-            <option>Computer Science  Engineering</option>
-            <option>Information Science  Engineering</option>
+            <option>Electronics & Communication</option>
+            <option>Computer Science</option>
+            <option>Information Science</option>
             <option>Chemical Engineering</option>
             <option>Other</option>
           </select>
@@ -1313,7 +1328,7 @@ td.actions-cell{ white-space: nowrap; }
 //  SECRET LIBRARIAN CODE — change this!
 //  Store this securely in production
 // ══════════════════════════════════════════
-const LIBRARIAN_SECRET = "KIT@LIB2026";
+const LIBRARIAN_SECRET = "KIT@LIB2024";
 
 // ═══ DATA ═══
 let books = [
@@ -2529,28 +2544,90 @@ function handleLogoClick() {
   }
 }
 
-// ══════════ NOTIFICATIONS (Browser Push API) ══════════
-function requestNotificationPermission() {
+// ══════════ NOTIFICATIONS (FCM Push + Browser API) ══════════
+async function requestNotificationPermission() {
   if (!('Notification' in window)) return;
-  if (Notification.permission === 'granted') return;
   if (Notification.permission === 'denied') return;
-  Notification.requestPermission().then(perm => {
-    if (perm === 'granted') {
-      showToast('🔔 Notifications enabled! You\'ll be alerted on book updates.');
+
+  // Ask for permission
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') return;
+
+  showToast('🔔 Notifications enabled! You\'ll be alerted on book updates.');
+
+  // Register service worker (needed for background push)
+  if (!('serviceWorker' in navigator)) {
+    console.warn('Service workers not supported — push notifications only work when app is open.');
+    return;
+  }
+
+  try {
+    // Register sw.js (must be in same folder as the HTML file)
+    const swReg = await navigator.serviceWorker.register('/sw.js');
+    console.log('✅ Service worker registered:', swReg.scope);
+
+    const fb = window._firebase;
+    if (!fb.messaging || !fb.VAPID_KEY || fb.VAPID_KEY === 'YOUR_VAPID_KEY_HERE') {
+      console.warn('FCM: Set your VAPID_KEY at the top of the script to enable background push.');
+      return;
     }
-  });
+
+    // Get FCM token
+    const fcmToken = await fb.getToken(fb.messaging, {
+      vapidKey: fb.VAPID_KEY,
+      serviceWorkerRegistration: swReg
+    });
+
+    if (!fcmToken) { console.warn('FCM token not received.'); return; }
+
+    // Save token to Firestore so Cloud Functions can target this device
+    if (window.currentUser) {
+      await fb.setDoc(
+        fb.doc(fb.db, 'users', window.currentUser.uid),
+        { fcmToken, fcmUpdatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+      console.log('✅ FCM token saved to Firestore.');
+    }
+
+    // Handle foreground messages (app IS open — show toast + browser notification)
+    fb.onMessage(fb.messaging, (payload) => {
+      const title = payload.notification?.title || 'KIT Library';
+      const body  = payload.notification?.body  || '';
+      showToast(body || title);
+      sendBrowserNotification(title, body);
+    });
+
+  } catch(err) {
+    console.warn('FCM setup error:', err.message);
+  }
 }
 
 function sendBrowserNotification(title, body) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
-    const n = new Notification(title, {
-      body,
-      icon: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
-      tag: 'kit-library-' + Date.now()
-    });
-    n.onclick = () => { window.focus(); n.close(); };
-    setTimeout(() => n.close(), 8000);
+    // Prefer service-worker notification (visible even when screen is off / app minimised)
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(title, {
+          body,
+          icon: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
+          badge: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
+          tag: 'kit-library-' + Date.now(),
+          vibrate: [200, 100, 200],
+          requireInteraction: false
+        });
+      });
+    } else {
+      // Fallback: basic Notification (only works when tab is open)
+      const n = new Notification(title, {
+        body,
+        icon: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
+        tag: 'kit-library-' + Date.now()
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+      setTimeout(() => n.close(), 8000);
+    }
   } catch(e) { console.warn('Notification error:', e); }
 }
 
