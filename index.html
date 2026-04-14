@@ -22,22 +22,21 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, doc, getDoc, setDoc, collection,
-    query, where, getDocs, deleteDoc, addDoc, serverTimestamp
+    query, where, getDocs, deleteDoc, orderBy, limit
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // ════════════════════════════════════════════════════════════
   //  🔧 PASTE YOUR FIREBASE CONFIG HERE
   //  Firebase Console → Project Settings → Your Apps → Web App
   // ════════════════════════════════════════════════════════════
-  const firebaseConfig = {
+ const firebaseConfig = {
   apiKey: "AIzaSyBDlN87xrd8NP_PQ4CIsV5q-P78w8k80Ms",
   authDomain: "library-5015d.firebaseapp.com",
   projectId: "library-5015d",
   storageBucket: "library-5015d.firebasestorage.app",
   messagingSenderId: "25135880670",
   appId: "1:25135880670:web:0885d13d72ee38061ae54f"
-  };
-
+};
   const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db   = getFirestore(app);
@@ -48,7 +47,7 @@
     signInWithEmailAndPassword, createUserWithEmailAndPassword,
     signOut, updateProfile, signInWithPopup,
     sendPasswordResetEmail,
-    doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, addDoc, serverTimestamp
+    doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, orderBy, limit
   };
 
   onAuthStateChanged(auth, async (user) => {
@@ -75,28 +74,18 @@
         document.getElementById('librarianNav').style.display = 'flex';
         document.getElementById('studentOnlyBtns').style.display = 'none';
         switchView('admin');
-        // Start polling for return requests and issue requests every 15 seconds
+        // Start polling for return requests every 15 seconds
         pollReturnRequests();
-        pollIssueRequests();
         if (!window._returnPollInterval) {
-          window._returnPollInterval = setInterval(() => { pollReturnRequests(); pollIssueRequests(); }, 15000);
+          window._returnPollInterval = setInterval(pollReturnRequests, 15000);
         }
-        // Clear student notification interval if any
-        if (window._studentNotifInterval) { clearInterval(window._studentNotifInterval); window._studentNotifInterval = null; }
-        requestNotificationPermission();
       } else {
         document.getElementById('librarianNav').style.display = 'none';
         document.getElementById('studentOnlyBtns').style.display = 'flex';
         switchView('student');
         loadMyBooks();
-        // Poll student notifications every 20 seconds
-        pollStudentNotifications();
-        if (!window._studentNotifInterval) {
-          window._studentNotifInterval = setInterval(pollStudentNotifications, 20000);
-        }
-        // Clear any librarian poll
+        // Clear any existing poll
         if (window._returnPollInterval) { clearInterval(window._returnPollInterval); window._returnPollInterval = null; }
-        requestNotificationPermission();
       }
     } else {
       window.currentUser = null;
@@ -351,8 +340,8 @@ header {
   font-size: 0.68rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap;
 }
-.role-badge.student  { background: #27ae60; color: #ffffff; }
-.role-badge.librarian{ background: #c0392b; color: #ffffff; }
+.role-badge.student  { background: rgba(39,174,96,0.22);  color: #2ecc71; }
+.role-badge.librarian{ background: rgba(192,57,43,0.22);  color: #e74c3c; }
 
 .install-btn {
   padding: 6px 12px; border: 1.5px solid rgba(255,255,255,0.25); border-radius: var(--r-sm);
@@ -384,9 +373,6 @@ header {
 .user-name {
   font-size: 0.8rem; font-weight: 600; color: white;
   max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.user-usn {
-  font-size: 0.6rem; color: #90cdf4; white-space: nowrap; font-family: 'DM Mono', monospace; letter-spacing: 0.03em;
 }
 .user-books-info { font-size: 0.64rem; color: #aaa; white-space: nowrap; }
 
@@ -499,10 +485,10 @@ main {
 }
 .book-status {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 0.76rem; font-weight: 600; padding: 4px 10px; border-radius: 20px;
+  font-size: 0.76rem; font-weight: 700; padding: 4px 10px; border-radius: 20px;
 }
-.book-status.available { background: #eafaf1; color: var(--green); }
-.book-status.issued    { background: #fef9e7; color: var(--accent2); }
+.book-status.available { background: #d4efdf; color: #1a7a3c; border: 1px solid #a9dfbf; }
+.book-status.issued    { background: #fde8cc; color: #c0600e; border: 1px solid #f5c09a; }
 .book-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .book-card-actions { margin-top: 12px; display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
 .my-issued-tag {
@@ -847,42 +833,8 @@ td.actions-cell{ white-space: nowrap; }
   .btn:hover { opacity: 0.88; }
 }
 
-/* ── EDIT PROFILE MODAL ── */
-.edit-count-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  background: var(--cream); border: 1.5px solid var(--border);
-  border-radius: 20px; padding: 3px 10px;
-  font-size: 0.73rem; font-weight: 600; color: var(--muted);
-}
-.edit-count-badge.warn { background: #fff8e1; border-color: #ffe082; color: #e67e22; }
-.edit-count-badge.danger { background: #fdecea; border-color: #f5b7b1; color: var(--accent); }
-
-/* ── ISSUE REQUEST MODAL ── */
-#issueRequestModal .modal { max-width: 420px; }
-.issue-request-info { background: var(--paper); border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px; margin-bottom: 16px; }
-.issue-request-info .book-req-title { font-weight: 700; font-size: 0.95rem; color: var(--ink); margin-bottom: 4px; }
-.issue-request-info .book-req-meta { font-size: 0.78rem; color: var(--muted); }
-
-/* ── NOTIFICATION BELL ── */
-.notif-bell {
-  position: relative; background: rgba(255,255,255,0.1); border: none;
-  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; color: white; font-size: 1.05rem; transition: background 0.2s;
-  -webkit-tap-highlight-color: transparent;
-}
-.notif-bell:hover { background: rgba(255,255,255,0.2); }
-.notif-bell .notif-dot {
-  position: absolute; top: 5px; right: 5px; width: 9px; height: 9px;
-  background: var(--accent); border-radius: 50%; border: 2px solid var(--ink); display: none;
-}
-.notif-bell .notif-dot.show { display: block; }
-
-/* ── ISSUE REQUESTS PANEL (librarian) ── */
-#issueReqsPanel { display:none;background:white;border:2px solid var(--blue);border-radius:var(--r-lg);padding:20px;margin-bottom:20px; }
-
-/* ── MOBILE: hide USN on very small ── */
-@media (max-width: 360px) { .user-usn { display: none; } }
-
+/* ── PRINT ── */
+@media print {
   #authOverlay, header, .mobile-tab-bar, #toast, #pwaPrompt { display: none !important; }
   main { padding: 0; }
   .book-grid { grid-template-columns: repeat(3, 1fr); }
@@ -986,10 +938,10 @@ td.actions-cell{ white-space: nowrap; }
             <option>Civil Engineering</option>
             <option>Mechanical Engineering</option>
             <option>Electrical Engineering</option>
-            <option>Electronics & Communication Engineering</option>
-            <option>Artificial intelligence and Machine Learning Engineering</option>
-            <option>Computer Science Engineering</option>
-            <option>Information Science Engineering</option>
+            <option>Electronics & Communication  Engineering</option>
+             <option>Artificial Intelligence and Machine Learning Engineering</option>
+            <option>Computer Science  Engineering</option>
+            <option>Information Science  Engineering</option>
             <option>Chemical Engineering</option>
             <option>Other</option>
           </select>
@@ -1046,7 +998,7 @@ td.actions-cell{ white-space: nowrap; }
 
 <header>
   <div class="header-left">
-    <img class="header-logo" src="https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png" alt="KIT Logo" onerror="this.style.display='none'" onclick="goHome()" style="cursor:pointer" title="Go to Home">
+    <img class="header-logo" src="https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png" alt="KIT Logo" onerror="this.style.display='none'" onclick="handleLogoClick()" style="cursor:pointer" title="Go to Home">
     <div class="header-text">
       <div class="header-title">KIT Library</div>
       <div class="header-sub">Karavali Institution of Technology</div>
@@ -1056,12 +1008,6 @@ td.actions-cell{ white-space: nowrap; }
   <div class="header-right">
     <button class="install-btn" id="installBtn" onclick="installPWA()">⬇️ Get App</button>
     <span class="role-badge" id="roleBadge">Student</span>
-
-    <!-- Notification Bell -->
-    <button class="notif-bell" id="notifBell" onclick="toggleNotifPanel()" title="Notifications" style="display:none">
-      🔔
-      <span class="notif-dot" id="notifDot"></span>
-    </button>
 
     <div class="mode-toggle" id="studentOnlyBtns" style="display:none">
       <button class="mode-btn active" onclick="switchView('student')">🎓 Browse</button>
@@ -1075,7 +1021,7 @@ td.actions-cell{ white-space: nowrap; }
         <div class="user-avatar" id="userAvatar"><span id="userInitial">U</span></div>
         <div class="user-info">
           <div class="user-name" id="userName">User</div>
-          <div class="user-usn" id="userUSNDisplay" style="display:none"></div>
+          <div class="user-usn" id="userUSN" style="font-size:0.6rem;color:#ccc;white-space:nowrap;display:none;font-family:'DM Mono',monospace"></div>
           <div class="user-books-info" id="userSubtext">Loading…</div>
         </div>
       </div>
@@ -1089,9 +1035,6 @@ td.actions-cell{ white-space: nowrap; }
         </div>
         <div class="user-dropdown-item" id="viewProfileLink" onclick="openProfileModal()" style="display:none">
           👤 My Profile &amp; Details
-        </div>
-        <div class="user-dropdown-item" id="editProfileLink" onclick="openEditProfileModal()" style="display:none">
-          ✏️ Edit Profile
         </div>
         <div class="user-dropdown-item danger" onclick="handleSignOut()">🚪 Sign Out</div>
       </div>
@@ -1134,12 +1077,13 @@ td.actions-cell{ white-space: nowrap; }
     <div class="book-grid" id="bookGrid"></div>
   </div>
 
+  <!-- ═══ ADMIN VIEW ═══ -->
   <div class="view" id="view-admin">
     <div class="admin-header">
       <h2>Librarian Dashboard</h2>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-blue" id="issueReqsBtn" onclick="toggleIssueReqsPanel()" style="display:none">
-          📥 Issue Requests <span id="issueReqsBadge" style="background:white;color:var(--blue);border-radius:20px;padding:1px 8px;font-size:0.72rem;margin-left:4px;font-weight:700">0</span>
+        <button class="btn btn-blue" id="issueReqsBtn" onclick="toggleIssuePanel()" style="display:none">
+          📥 Issue Requests <span id="issueReqsBadge" style="background:white;color:var(--blue);border-radius:20px;padding:1px 8px;font-size:0.72rem;margin-left:4px">0</span>
         </button>
         <button class="btn btn-warn" id="returnReqsBtn" onclick="toggleReturnPanel()" style="display:none">
           📬 Return Requests <span id="returnReqsBadge" style="background:var(--accent);color:white;border-radius:20px;padding:1px 8px;font-size:0.72rem;margin-left:4px">0</span>
@@ -1149,7 +1093,7 @@ td.actions-cell{ white-space: nowrap; }
     </div>
 
     <!-- Issue Requests Panel -->
-    <div id="issueReqsPanel" style="display:none;background:white;border:2px solid var(--blue);border-radius:var(--r-lg);padding:20px;margin-bottom:20px">
+    <div id="issueRequestsPanel" style="display:none;background:white;border:2px solid var(--blue);border-radius:var(--r-lg);padding:20px;margin-bottom:20px">
       <h3 style="font-family:'Playfair Display',serif;font-size:1.15rem;margin-bottom:14px;color:var(--blue)">📥 Pending Issue Requests</h3>
       <div id="issueRequestsList"></div>
     </div>
@@ -1259,101 +1203,75 @@ td.actions-cell{ white-space: nowrap; }
         <div style="margin-top:6px"><span style="background:rgba(39,174,96,0.3);color:#2ecc71;padding:3px 10px;border-radius:20px;font-size:0.68rem;font-weight:700">🎓 Student</span></div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
-      <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px">
-        <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">USN</div>
-        <div id="profileUSN" style="font-family:'DM Mono',monospace;font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
-      </div>
-      <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px">
-        <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Semester</div>
-        <div id="profileSemester" style="font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
-      </div>
-      <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;grid-column:1/-1">
-        <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Branch / Department</div>
-        <div id="profileBranch" style="font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
-      </div>
-    </div>
-    <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;margin-bottom:18px">
-      <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Currently Issued Books</div>
-      <div id="profileIssuedList" style="font-size:0.84rem;color:var(--ink)">Loading…</div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeProfileModal()">Close</button>
-    </div>
-  </div>
-</div>
 
-<!-- ── EDIT PROFILE MODAL ── -->
-<div class="modal-bg" id="editProfileModal">
-  <div class="modal" style="max-width:440px">
-    <h3 style="margin-bottom:4px">✏️ Edit Profile</h3>
-    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:16px">You can edit your profile details. <span id="editRemainingNote"></span></p>
-    <div id="editProfileError" class="auth-error" style="margin-bottom:14px"></div>
-    <div class="form-field" style="margin-bottom:12px">
-      <label>Full Name</label>
-      <input type="text" id="epName" class="auth-input">
+    <!-- VIEW MODE -->
+    <div id="profileViewMode">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+        <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px">
+          <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">USN</div>
+          <div id="profileUSN" style="font-family:'DM Mono',monospace;font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
+        </div>
+        <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px">
+          <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Semester</div>
+          <div id="profileSemester" style="font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
+        </div>
+        <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;grid-column:1/-1">
+          <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Branch / Department</div>
+          <div id="profileBranch" style="font-size:0.9rem;font-weight:600;color:var(--ink)">—</div>
+        </div>
+      </div>
+      <div style="background:var(--paper);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;margin-bottom:18px">
+        <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Currently Issued Books</div>
+        <div id="profileIssuedList" style="font-size:0.84rem;color:var(--ink)">Loading…</div>
+      </div>
+      <div class="modal-actions">
+        <div id="profileEditInfo" style="font-size:0.75rem;color:var(--muted);flex:1;align-self:center"></div>
+        <button class="btn btn-blue btn-sm" id="profileEditBtn" onclick="openProfileEdit()">✏️ Edit Details</button>
+        <button class="btn btn-ghost" onclick="closeProfileModal()">Close</button>
+      </div>
     </div>
-    <div class="form-field" style="margin-bottom:12px">
-      <label>USN</label>
-      <input type="text" id="epUSN" class="auth-input" style="text-transform:uppercase">
-    </div>
-    <div class="form-field" style="margin-bottom:12px">
-      <label>Branch / Department</label>
-      <select id="epBranch" class="auth-input">
-        <option value="">Select Branch</option>
-        <option>Civil Engineering</option>
-        <option>Mechanical Engineering</option>
-        <option>Electrical Engineering</option>
-        <option>Electronics & Communication</option>
-        <option>Computer Science</option>
-        <option>Information Science</option>
-        <option>Chemical Engineering</option>
-        <option>Other</option>
-      </select>
-    </div>
-    <div class="form-field" style="margin-bottom:18px">
-      <label>Semester</label>
-      <select id="epSemester" class="auth-input">
-        <option value="">Select Semester</option>
-        <option>1st Sem</option><option>2nd Sem</option><option>3rd Sem</option>
-        <option>4th Sem</option><option>5th Sem</option><option>6th Sem</option>
-        <option>7th Sem</option><option>8th Sem</option>
-      </select>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeEditProfileModal()">Cancel</button>
-      <button class="btn btn-primary" id="saveProfileBtn" onclick="saveEditProfile()">Save Changes</button>
-    </div>
-  </div>
-</div>
 
-<!-- ── ISSUE REQUEST MODAL (student) ── -->
-<div class="modal-bg" id="issueRequestModal">
-  <div class="modal" style="max-width:400px">
-    <h3 style="margin-bottom:8px">📤 Request Book Issue</h3>
-    <p style="font-size:0.82rem;color:var(--muted);margin-bottom:14px">Your request will be sent to the librarian for approval.</p>
-    <div id="issueReqBookInfo" class="issue-request-info"></div>
-    <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:var(--r-sm);padding:10px 14px;font-size:0.78rem;color:#1565c0;margin-bottom:18px">
-      📋 The librarian will verify and approve your request. You will be notified once approved.
+    <!-- EDIT MODE -->
+    <div id="profileEditMode" style="display:none">
+      <div style="background:#e8f4fd;border:1px solid #90c4e8;border-radius:var(--r-sm);padding:10px 14px;font-size:0.78rem;color:#1565c0;margin-bottom:14px">
+        ✏️ You can edit your profile <strong id="profileEditsLeft">—</strong> more time(s). This is limited to 3 times total.
+      </div>
+      <div class="auth-field">
+        <label>Full Name</label>
+        <input class="auth-input" type="text" id="editProfileName" placeholder="Your full name">
+      </div>
+      <div class="auth-field">
+        <label>USN</label>
+        <input class="auth-input" type="text" id="editProfileUSN" placeholder="e.g. 4KT21CV001" style="text-transform:uppercase">
+      </div>
+      <div class="auth-field">
+        <label>Branch / Department</label>
+        <select class="auth-input" id="editProfileBranch">
+          <option value="">Select Branch</option>
+          <option>Civil Engineering</option>
+          <option>Mechanical Engineering</option>
+          <option>Electrical Engineering</option>
+          <option>Electronics & Communication</option>
+          <option>Computer Science</option>
+          <option>Information Science</option>
+          <option>Chemical Engineering</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="auth-field">
+        <label>Semester</label>
+        <select class="auth-input" id="editProfileSemester">
+          <option value="">Select Semester</option>
+          <option>1st Sem</option><option>2nd Sem</option><option>3rd Sem</option>
+          <option>4th Sem</option><option>5th Sem</option><option>6th Sem</option>
+          <option>7th Sem</option><option>8th Sem</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="cancelProfileEdit()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveProfileEdit()">💾 Save Changes</button>
+      </div>
     </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeIssueRequestModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitIssueRequest()">📤 Send Request</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── NOTIFICATION PANEL ── -->
-<div id="notifPanel" style="display:none;position:fixed;top:calc(var(--header-h) + 8px);right:16px;background:white;border:1.5px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-md);width:320px;max-width:calc(100vw - 32px);z-index:300;overflow:hidden;animation:fadeIn 0.15s ease">
-  <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-    <strong style="font-size:0.9rem">🔔 Notifications</strong>
-    <button onclick="closeNotifPanel()" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;line-height:1">✕</button>
-  </div>
-  <div id="notifList" style="max-height:300px;overflow-y:auto;padding:8px 0">
-    <div style="padding:16px;text-align:center;color:var(--muted);font-size:0.84rem">No notifications yet.</div>
-  </div>
-  <div style="padding:10px 16px;border-top:1px solid var(--border)">
-    <button onclick="clearAllNotifs()" style="background:none;border:none;color:var(--muted);font-size:0.75rem;cursor:pointer">Clear all</button>
   </div>
 </div>
 
@@ -1880,11 +1798,11 @@ async function handleSignUp() {
     const cred = await fb.createUserWithEmailAndPassword(fb.auth, email, pw);
     await fb.updateProfile(cred.user, { displayName: name });
     const profile = {
-      name, email, role: selectedRole, issuedBooks: [], createdAt: new Date().toISOString(),
-      profileEditCount: 0
+      name, email, role: selectedRole, issuedBooks: [], createdAt: new Date().toISOString()
     };
     if (selectedRole === 'student') { profile.usn = usn; profile.branch = branch; profile.semester = semester; }
     await fb.setDoc(fb.doc(fb.db, 'users', cred.user.uid), profile);
+    // Request notification permission on registration
     requestNotificationPermission();
     showToast(`Welcome to KIT Library, ${name}! 🎉`);
   } catch(err) {
@@ -1945,9 +1863,6 @@ async function handleSignOut() {
   if (!fb) return;
   await fb.signOut(fb.auth);
   myIssuedBookIds = new Set();
-  _notifications = [];
-  if (window._returnPollInterval) { clearInterval(window._returnPollInterval); window._returnPollInterval = null; }
-  if (window._studentNotifInterval) { clearInterval(window._studentNotifInterval); window._studentNotifInterval = null; }
   closeUserDropdown();
   showToast('Signed out. See you soon! 👋');
 }
@@ -1972,9 +1887,6 @@ function updateHeaderUser(user) {
   roleBadge.textContent = role === 'librarian' ? '🔑 Librarian' : '🎓 Student';
   roleBadge.className = 'role-badge ' + role;
 
-  // Show notification bell for all users
-  document.getElementById('notifBell').style.display = 'flex';
-
   // Show/hide mobile tabs
   if (role === 'student') {
     document.getElementById('mobileStudentBtn').style.display = 'flex';
@@ -1982,27 +1894,39 @@ function updateHeaderUser(user) {
     document.getElementById('mobileTabBar').style.display = 'flex';
     document.getElementById('myBooksLink').style.display = 'flex';
     document.getElementById('viewProfileLink').style.display = 'flex';
-    document.getElementById('editProfileLink').style.display = 'flex';
+    // Load USN for header display
+    loadHeaderUSN(user.uid);
+    // Check for pending notifications for student
+    setTimeout(() => checkStudentNotifications(), 2000);
   } else {
     document.getElementById('mobileStudentBtn').style.display = 'none';
     document.getElementById('mobileAdminBtn').style.display = 'flex';
     document.getElementById('mobileTabBar').style.display = 'flex';
     document.getElementById('myBooksLink').style.display = 'none';
     document.getElementById('viewProfileLink').style.display = 'none';
-    document.getElementById('editProfileLink').style.display = 'none';
   }
   document.getElementById('userSubtext').textContent = role === 'librarian' ? 'Librarian Access' : '📖 0 books issued';
 
-  // Load USN for student to show in header
-  if (role === 'student' && window._firebase) {
-    window._firebase.getDoc(window._firebase.doc(window._firebase.db, 'users', user.uid)).then(snap => {
-      if (snap.exists()) {
-        const usn = snap.data().usn || '';
-        const usnEl = document.getElementById('userUSNDisplay');
-        if (usn && usnEl) { usnEl.textContent = usn; usnEl.style.display = 'block'; }
-      }
-    }).catch(()=>{});
+  // Request notification permission if not asked yet
+  if (Notification.permission === 'default') {
+    setTimeout(() => requestNotificationPermission(), 2500);
   }
+}
+
+async function loadHeaderUSN(uid) {
+  if (!window._firebase) return;
+  const fb = window._firebase;
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, 'users', uid));
+    if (snap.exists()) {
+      const usn = snap.data().usn;
+      if (usn) {
+        const usnEl = document.getElementById('userUSN');
+        if (usnEl) { usnEl.textContent = usn; usnEl.style.display = 'block'; }
+        window._currentUserUSN = usn;
+      }
+    }
+  } catch(e) {}
 }
 
 // ══════════ SYNC BOOK STATUSES FROM FIRESTORE ══════════
@@ -2023,8 +1947,7 @@ async function syncBooksFromFirestore() {
       }
     });
     refresh();
-    if (window.currentUserRole === 'librarian') { pollReturnRequests(); pollIssueRequests(); }
-    if (window.currentUserRole === 'student') pollStudentNotifications();
+    if (window.currentUserRole === 'librarian') pollReturnRequests();
   } catch(err) { console.warn('syncBooks error:', err.message); }
 }
 
@@ -2047,7 +1970,7 @@ async function loadMyBooks() {
     } catch(e) {}
     window._pendingReturnBookIds = pendingReturnBookIds;
 
-    // Track which books have pending issue requests from this student
+    // Track which books have pending issue requests
     let pendingIssueBookIds = new Set();
     try {
       const issSnap = await fb.getDocs(fb.query(fb.collection(fb.db,'issueRequests'), fb.where('studentUid','==',window.currentUser.uid), fb.where('status','==','pending')));
@@ -2091,84 +2014,44 @@ async function loadMyBooks() {
   } catch(err) { console.error('loadMyBooks:', err); }
 }
 
-// ══════════ ISSUE REQUEST (student sends request to librarian) ══════════
-let _pendingIssueBookId = null;
-
-function issueBook(bookId) {
-  // Now opens a request modal instead of directly issuing
+async function issueBook(bookId) {
+  if (!window.currentUser) return;
+  const fb = window._firebase;
   const book = books.find(b => b.id === bookId);
   if (!book || book.status !== 'available') return;
   if (myIssuedBookIds.has(bookId)) { showToast('You already have this book!'); return; }
-  _pendingIssueBookId = bookId;
-  document.getElementById('issueReqBookInfo').innerHTML = `
-    <div class="book-req-title">📖 ${book.title}</div>
-    <div class="book-req-meta">✍️ ${book.author} · Shelf ${book.shelf} · ${book.genre}</div>
-  `;
-  document.getElementById('issueRequestModal').classList.add('open');
-}
 
-function closeIssueRequestModal() {
-  document.getElementById('issueRequestModal').classList.remove('open');
-  _pendingIssueBookId = null;
-}
+  // Check if already requested
+  if (window._pendingIssueBookIds && window._pendingIssueBookIds.has(bookId)) {
+    showToast('⏳ You already sent a request for this book!'); return;
+  }
 
-async function submitIssueRequest() {
-  if (!window.currentUser || !_pendingIssueBookId) return;
-  const fb = window._firebase;
-  const book = books.find(b => b.id === _pendingIssueBookId);
-  if (!book) return;
   try {
     const snap = await fb.getDoc(fb.doc(fb.db, 'users', window.currentUser.uid));
     const uData = snap.exists() ? snap.data() : {};
-    const reqId = 'iss_' + _pendingIssueBookId + '_' + window.currentUser.uid + '_' + Date.now();
-    await fb.setDoc(fb.doc(fb.db, 'issueRequests', reqId), {
-      reqId, bookId: _pendingIssueBookId,
+    const reqId = 'iss_' + bookId + '_' + window.currentUser.uid + '_' + Date.now();
+    const req = {
+      reqId, bookId,
       studentUid: window.currentUser.uid,
       studentName: uData.name || window.currentUser.displayName || window.currentUser.email,
       studentEmail: window.currentUser.email,
       usn: uData.usn || '—',
       branch: uData.branch || '—',
-      bookTitle: book.title, bookAuthor: book.author, bookShelf: book.shelf,
-      requestedAt: new Date().toISOString(), status: 'pending'
-    });
-    closeIssueRequestModal();
-    // Immediately mark this book as pending in local state
+      bookTitle: book.title,
+      bookAuthor: book.author,
+      bookShelf: book.shelf,
+      requestedAt: new Date().toISOString(),
+      status: 'pending'
+    };
+    await fb.setDoc(fb.doc(fb.db, 'issueRequests', reqId), req);
+
     if (!window._pendingIssueBookIds) window._pendingIssueBookIds = new Set();
-    window._pendingIssueBookIds.add(_pendingIssueBookId);
+    window._pendingIssueBookIds.add(bookId);
+
+    // Browser notification to librarian (if they have this tab open — handled by polling)
+    showToast('📤 Issue request sent to librarian! Awaiting approval.');
     renderStudentGrid();
-    showToast('📤 Issue request sent! Awaiting librarian approval.');
-    // Add in-app notification for student
-    addNotification('📤 Issue request sent for "' + book.title.slice(0,40) + '". Awaiting librarian approval.', 'info');
-    // Send push notification to librarian (browser notification)
-    sendPushNotification('New Issue Request', `${uData.name || 'A student'} wants to issue "${book.title.slice(0,40)}"`);
   } catch(err) { showToast('Error: ' + err.message); }
-}
-
-document.getElementById('issueRequestModal').addEventListener('click', function(e){ if(e.target===this) closeIssueRequestModal(); });
-
-// Librarian: directly issue a book (after approving request)
-async function librarianIssueBook(bookId, studentUid, studentName, studentEmail) {
-  const fb = window._firebase;
-  const book = books.find(b => b.id === bookId);
-  if (!book) return;
-  const issuedAt = new Date().toISOString();
-  try {
-    const userRef = fb.doc(fb.db, 'users', studentUid);
-    const snap = await fb.getDoc(userRef);
-    const existing = snap.exists() ? (snap.data().issuedBooks || []) : [];
-    const record = { bookId, title: book.title, author: book.author, shelf: book.shelf, issuedAt };
-    await fb.setDoc(userRef, { issuedBooks: [...existing, record], updatedAt: issuedAt }, { merge: true });
-    const bookRef = fb.doc(fb.db, 'books', String(bookId));
-    await fb.setDoc(bookRef, {
-      bookId, title: book.title, author: book.author, shelf: book.shelf,
-      status: 'issued', issuedTo: studentUid, issuedToName: studentName,
-      issuedToEmail: studentEmail, issuedAt
-    });
-    book.status = 'issued'; book.issuedTo = studentUid; book.issuedToName = studentName;
-    // Notify student
-    await sendStudentNotification(studentUid, '✅ Book Issued', `Your request for "${book.title.slice(0,40)}" has been approved and issued to you!`, 'success');
-    refresh();
-  } catch(err) { showToast('Error issuing: ' + err.message); }
 }
 
 // ══════════ RETURN REQUESTS (Firestore-backed notification) ══════════
@@ -2200,8 +2083,6 @@ async function returnBook(bookId) {
     };
     await fb.setDoc(fb.doc(fb.db, 'returnRequests', reqId), req);
     showToast('📬 Return request sent! Awaiting librarian confirmation.');
-    addNotification('📬 Return request sent for "' + book.title.slice(0,40) + '". Awaiting librarian approval.', 'info');
-    sendPushNotification('Return Request', `${uData.name || 'A student'} wants to return "${book.title.slice(0,40)}"`);
     loadMyBooks(); refresh();
   } catch(err) { showToast('Error: ' + err.message); }
 }
@@ -2212,18 +2093,10 @@ async function pollReturnRequests() {
   const fb = window._firebase;
   try {
     const snap = await fb.getDocs(fb.query(fb.collection(fb.db, 'returnRequests'), fb.where('status','==','pending')));
-    const prevCount = pendingReturnRequests.length;
     pendingReturnRequests = [];
     snap.forEach(d => pendingReturnRequests.push(d.data()));
 
     const count = pendingReturnRequests.length;
-    if (count > prevCount) {
-      // New return request came in — send browser notification
-      const newest = pendingReturnRequests[pendingReturnRequests.length - 1];
-      sendPushNotification('📬 Return Request', `${newest.studentName} wants to return "${newest.bookTitle.slice(0,40)}"`);
-      addNotification(`📬 Return request: "${newest.bookTitle.slice(0,40)}" from ${newest.studentName}`, 'warn');
-    }
-
     const btn = document.getElementById('returnReqsBtn');
     const badge = document.getElementById('returnReqsBadge');
     const oldBadge = document.getElementById('pendingReturnsBadge');
@@ -2232,12 +2105,23 @@ async function pollReturnRequests() {
     if (badge) badge.textContent = count;
     if (oldBadge) { oldBadge.style.display = count > 0 ? 'block' : 'none'; document.getElementById('pendingReturnsCount').textContent = count; }
 
+    // Browser notification for new return requests
+    if (count > (window._prevReturnCount || 0) && Notification.permission === 'granted') {
+      const newest = pendingReturnRequests[pendingReturnRequests.length - 1];
+      if (newest) sendBrowserNotification('📬 Return Request', `${newest.studentName} wants to return "${newest.bookTitle.slice(0,40)}"`);
+    }
+    window._prevReturnCount = count;
+
     renderReturnRequestsPanel();
   } catch(e) { console.warn('pollReturnRequests:', e.message); }
+
+  // Also poll issue requests
+  pollIssueRequests();
 }
 
-// Librarian: poll for pending issue requests
+// ══════════ ISSUE REQUESTS (Librarian) ══════════
 let pendingIssueRequests = [];
+
 async function pollIssueRequests() {
   if (window.currentUserRole !== 'librarian' || !window._firebase) return;
   const fb = window._firebase;
@@ -2248,23 +2132,26 @@ async function pollIssueRequests() {
     snap.forEach(d => pendingIssueRequests.push(d.data()));
 
     const count = pendingIssueRequests.length;
-    if (count > prevCount) {
-      const newest = pendingIssueRequests[pendingIssueRequests.length - 1];
-      sendPushNotification('📥 Issue Request', `${newest.studentName} wants to borrow "${newest.bookTitle.slice(0,40)}"`);
-      addNotification(`📥 Issue request: "${newest.bookTitle.slice(0,40)}" from ${newest.studentName}`, 'info');
-    }
-
     const btn = document.getElementById('issueReqsBtn');
     const badge = document.getElementById('issueReqsBadge');
     if (btn) { btn.style.display = count > 0 ? 'inline-flex' : 'none'; }
     if (badge) badge.textContent = count;
-    updateNotifBell();
+
+    // Send browser notification if new requests arrived
+    if (count > prevCount && Notification.permission === 'granted') {
+      const newest = pendingIssueRequests[pendingIssueRequests.length - 1];
+      sendBrowserNotification(
+        '📥 New Issue Request',
+        `${newest.studentName} wants to issue "${newest.bookTitle.slice(0,40)}"`
+      );
+    }
+
     renderIssueRequestsPanel();
   } catch(e) { console.warn('pollIssueRequests:', e.message); }
 }
 
-function toggleIssueReqsPanel() {
-  const panel = document.getElementById('issueReqsPanel');
+function toggleIssuePanel() {
+  const panel = document.getElementById('issueRequestsPanel');
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
   if (panel.style.display === 'block') renderIssueRequestsPanel();
 }
@@ -2285,71 +2172,107 @@ function renderIssueRequestsPanel() {
         <div style="font-size:0.7rem;color:var(--muted);margin-top:2px">Requested: ${new Date(req.requestedAt).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-sm btn-success" onclick="confirmIssueRequest('${req.reqId}', true)">✅ Approve</button>
-        <button class="btn btn-sm btn-danger" onclick="confirmIssueRequest('${req.reqId}', false)">❌ Reject</button>
+        <button class="btn btn-sm btn-success" onclick="approveIssueRequest('${req.reqId}', true)">✅ Approve</button>
+        <button class="btn btn-sm btn-danger" onclick="approveIssueRequest('${req.reqId}', false)">❌ Reject</button>
       </div>
     </div>
   `).join('');
 }
 
-async function confirmIssueRequest(reqId, approved) {
+async function approveIssueRequest(reqId, approved) {
   if (!window._firebase) return;
   const fb = window._firebase;
   const req = pendingIssueRequests.find(r => r.reqId === reqId);
   if (!req) return;
+
   try {
     if (approved) {
-      // Issue the book to the student
-      await librarianIssueBook(req.bookId, req.studentUid, req.studentName, req.studentEmail);
-      showToast(`✅ Book issued to ${req.studentName}`);
+      const issuedAt = new Date().toISOString();
+      // 1. Add to student's issued books
+      const userRef = fb.doc(fb.db, 'users', req.studentUid);
+      const uSnap = await fb.getDoc(userRef);
+      const existing = uSnap.exists() ? (uSnap.data().issuedBooks || []) : [];
+      const record = { bookId: req.bookId, title: req.bookTitle, author: req.bookAuthor, shelf: req.bookShelf, issuedAt };
+      await fb.setDoc(userRef, { issuedBooks: [...existing, record], updatedAt: issuedAt }, { merge: true });
+
+      // 2. Mark book as issued in Firestore
+      const bookRef = fb.doc(fb.db, 'books', String(req.bookId));
+      const book = books.find(b => b.id === req.bookId);
+      await fb.setDoc(bookRef, {
+        bookId: req.bookId, title: req.bookTitle, author: req.bookAuthor, shelf: req.bookShelf,
+        status: 'issued', issuedTo: req.studentUid, issuedToName: req.studentName,
+        issuedToEmail: req.studentEmail, issuedAt
+      });
+
+      // 3. Update local book array
+      if (book) { book.status = 'issued'; book.issuedTo = req.studentUid; book.issuedToName = req.studentName; }
+
+      // 4. Store notification for student
+      await storeStudentNotification(req.studentUid, {
+        type: 'issue_approved',
+        message: `✅ Your request for "${req.bookTitle.slice(0,40)}" has been approved! Collect from Shelf ${req.bookShelf}.`,
+        bookTitle: req.bookTitle, bookShelf: req.bookShelf, createdAt: new Date().toISOString(), read: false
+      });
+
+      showToast(`✅ Issue approved for "${req.bookTitle.slice(0,30)}…"`);
     } else {
-      // Notify student of rejection
-      await sendStudentNotification(req.studentUid, '❌ Issue Request Rejected', `Your request for "${req.bookTitle.slice(0,40)}" was not approved. Please contact the librarian.`, 'error');
-      showToast(`❌ Issue request rejected.`);
+      // Store rejection notification for student
+      await storeStudentNotification(req.studentUid, {
+        type: 'issue_rejected',
+        message: `❌ Your issue request for "${req.bookTitle.slice(0,40)}" was not approved by the librarian.`,
+        bookTitle: req.bookTitle, createdAt: new Date().toISOString(), read: false
+      });
+      showToast('❌ Issue request rejected — student notified.');
     }
+
+    // 5. Delete request doc
     await fb.deleteDoc(fb.doc(fb.db, 'issueRequests', reqId));
     pendingIssueRequests = pendingIssueRequests.filter(r => r.reqId !== reqId);
-    renderIssueRequestsPanel();
     const count = pendingIssueRequests.length;
-    document.getElementById('issueReqsBtn').style.display = count > 0 ? 'inline-flex' : 'none';
-    document.getElementById('issueReqsBadge').textContent = count;
-    updateNotifBell();
+    const btn = document.getElementById('issueReqsBtn');
+    const badge = document.getElementById('issueReqsBadge');
+    if (btn) btn.style.display = count > 0 ? 'inline-flex' : 'none';
+    if (badge) badge.textContent = count;
+
+    renderIssueRequestsPanel();
+    refresh();
   } catch(err) { showToast('Error: ' + err.message); }
 }
 
-// Send notification to a specific student via Firestore
-async function sendStudentNotification(studentUid, title, body, type) {
+// Store notification in Firestore for student
+async function storeStudentNotification(studentUid, notif) {
   if (!window._firebase) return;
   const fb = window._firebase;
   try {
-    const notifId = 'notif_' + Date.now();
-    await fb.setDoc(fb.doc(fb.db, 'notifications', notifId), {
-      notifId, studentUid, title, body, type,
-      createdAt: new Date().toISOString(), read: false
-    });
-  } catch(e) { console.warn('sendStudentNotification:', e); }
+    const nId = 'notif_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+    await fb.setDoc(fb.doc(fb.db, 'notifications', nId), { ...notif, studentUid, notifId: nId });
+  } catch(e) { console.warn('storeNotif:', e); }
 }
 
-// Poll student notifications from Firestore
-async function pollStudentNotifications() {
-  if (window.currentUserRole !== 'student' || !window._firebase || !window.currentUser) return;
+// Student: check for unread notifications
+async function checkStudentNotifications() {
+  if (!window.currentUser || window.currentUserRole !== 'student' || !window._firebase) return;
   const fb = window._firebase;
   try {
     const snap = await fb.getDocs(fb.query(
       fb.collection(fb.db, 'notifications'),
-      fb.where('studentUid','==',window.currentUser.uid),
-      fb.where('read','==',false)
+      fb.where('studentUid', '==', window.currentUser.uid),
+      fb.where('read', '==', false)
     ));
-    snap.forEach(d => {
-      const n = d.data();
-      addNotification(`${n.title}: ${n.body}`, n.type || 'info');
+    snap.forEach(async d => {
+      const notif = d.data();
+      // Show toast
+      showToast(notif.message);
+      // Show browser notification
+      if (Notification.permission === 'granted') {
+        sendBrowserNotification('KIT Library', notif.message);
+      }
       // Mark as read
-      fb.setDoc(fb.doc(fb.db, 'notifications', n.notifId), { read: true }, { merge: true });
-      // Show push notification to student
-      sendPushNotification(n.title, n.body);
+      await fb.setDoc(fb.doc(fb.db, 'notifications', notif.notifId), { read: true }, { merge: true });
     });
-    updateNotifBell();
-  } catch(e) { console.warn('pollStudentNotifications:', e); }
+    // Reload books if approved
+    if (!snap.empty) { setTimeout(() => loadMyBooks(), 1000); setTimeout(() => syncBooksFromFirestore(), 1200); }
+  } catch(e) { console.warn('checkStudentNotifications:', e); }
 }
 
 function toggleReturnPanel() {
@@ -2425,11 +2348,22 @@ async function confirmReturn(approved) {
 
       // 3. Update local array so stats refresh correctly
       if (book) { book.status = 'available'; book.issuedTo = null; book.issuedToName = null; }
+
+      // 4. Notify student
+      await storeStudentNotification(req.studentUid, {
+        type: 'return_approved',
+        message: `✅ Your return of "${req.bookTitle.slice(0,40)}" has been confirmed. Thank you!`,
+        bookTitle: req.bookTitle, createdAt: new Date().toISOString(), read: false
+      });
       showToast('✅ Return confirmed for "' + req.bookTitle.slice(0,32) + '"');
-      await sendStudentNotification(req.studentUid, '✅ Return Confirmed', `Your return of "${req.bookTitle.slice(0,40)}" has been confirmed. Thank you!`, 'success');
     } else {
+      // Notify student of rejection
+      await storeStudentNotification(req.studentUid, {
+        type: 'return_rejected',
+        message: `❌ Your return of "${req.bookTitle.slice(0,40)}" was not confirmed. Please bring the book to the library.`,
+        bookTitle: req.bookTitle, createdAt: new Date().toISOString(), read: false
+      });
       showToast('❌ Return rejected — student notified to bring book back.');
-      await sendStudentNotification(req.studentUid, '❌ Return Rejected', `Return of "${req.bookTitle.slice(0,40)}" was rejected. Please bring the physical book to the library.`, 'error');
     }
 
     // 4. Delete the return request doc
@@ -2457,6 +2391,8 @@ async function confirmReturn(approved) {
 async function openProfileModal() {
   closeUserDropdown();
   document.getElementById('profileModal').classList.add('open');
+  document.getElementById('profileViewMode').style.display = 'block';
+  document.getElementById('profileEditMode').style.display = 'none';
   const user = window.currentUser;
   if (!user) return;
   const name = user.displayName || user.email.split('@')[0];
@@ -2476,6 +2412,27 @@ async function openProfileModal() {
       document.getElementById('profileUSN').textContent = data.usn || '—';
       document.getElementById('profileBranch').textContent = data.branch || '—';
       document.getElementById('profileSemester').textContent = data.semester || '—';
+
+      // Edit count logic
+      const editCount = data.profileEditCount || 0;
+      const editsLeft = 3 - editCount;
+      const editBtn = document.getElementById('profileEditBtn');
+      const editInfo = document.getElementById('profileEditInfo');
+      if (window.currentUserRole === 'student') {
+        if (editsLeft > 0) {
+          editBtn.style.display = 'inline-flex';
+          editInfo.textContent = `✏️ ${editsLeft} edit${editsLeft!==1?'s':''} remaining`;
+          editInfo.style.color = editsLeft === 1 ? 'var(--accent)' : 'var(--muted)';
+        } else {
+          editBtn.style.display = 'none';
+          editInfo.textContent = '🔒 Profile edits used up (max 3)';
+          editInfo.style.color = 'var(--accent)';
+        }
+      } else {
+        editBtn.style.display = 'none';
+        editInfo.textContent = '';
+      }
+
       const issued = data.issuedBooks || [];
       if (!issued.length) {
         document.getElementById('profileIssuedList').innerHTML = '<span style="color:var(--muted)">No books currently issued.</span>';
@@ -2494,169 +2451,109 @@ async function openProfileModal() {
   }
 }
 
-function closeProfileModal() {
-  document.getElementById('profileModal').classList.remove('open');
+async function openProfileEdit() {
+  if (!window.currentUser || !window._firebase) return;
+  const fb = window._firebase;
+  const snap = await fb.getDoc(fb.doc(fb.db, 'users', window.currentUser.uid));
+  const data = snap.exists() ? snap.data() : {};
+  const editCount = data.profileEditCount || 0;
+  if (editCount >= 3) { showToast('🔒 You have used all 3 profile edits.'); return; }
+
+  document.getElementById('editProfileName').value = data.name || window.currentUser.displayName || '';
+  document.getElementById('editProfileUSN').value = data.usn || '';
+  document.getElementById('editProfileBranch').value = data.branch || '';
+  document.getElementById('editProfileSemester').value = data.semester || '';
+  document.getElementById('profileEditsLeft').textContent = (3 - editCount);
+
+  document.getElementById('profileViewMode').style.display = 'none';
+  document.getElementById('profileEditMode').style.display = 'block';
+}
+
+function cancelProfileEdit() {
+  document.getElementById('profileViewMode').style.display = 'block';
+  document.getElementById('profileEditMode').style.display = 'none';
+}
+
+async function saveProfileEdit() {
+  if (!window.currentUser || !window._firebase) return;
+  const fb = window._firebase;
+  const name = document.getElementById('editProfileName').value.trim();
+  const usn = document.getElementById('editProfileUSN').value.trim().toUpperCase();
+  const branch = document.getElementById('editProfileBranch').value;
+  const semester = document.getElementById('editProfileSemester').value;
+
+  if (!name) { showToast('Name cannot be empty.'); return; }
+  if (!usn) { showToast('USN cannot be empty.'); return; }
+  if (!branch) { showToast('Please select your branch.'); return; }
+  if (!semester) { showToast('Please select your semester.'); return; }
+
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, 'users', window.currentUser.uid));
+    const data = snap.exists() ? snap.data() : {};
+    const editCount = data.profileEditCount || 0;
+    if (editCount >= 3) { showToast('🔒 You have used all 3 profile edits.'); return; }
+
+    await fb.updateProfile(window.currentUser, { displayName: name });
+    await fb.setDoc(fb.doc(fb.db, 'users', window.currentUser.uid), {
+      name, usn, branch, semester, profileEditCount: editCount + 1, updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    // Update header
+    document.getElementById('userName').textContent = name;
+    const usnEl = document.getElementById('userUSN');
+    if (usnEl) { usnEl.textContent = usn; usnEl.style.display = 'block'; }
+    window._currentUserUSN = usn;
+
+    showToast(`✅ Profile updated! (${3 - editCount - 1} edit${(3 - editCount - 1)!==1?'s':''} remaining)`);
+    cancelProfileEdit();
+    openProfileModal(); // Reload the modal data
+  } catch(err) { showToast('Error: ' + err.message); }
 }
 
 // Close profile modal on backdrop click
 document.getElementById('profileModal').addEventListener('click', function(e){ if(e.target===this) closeProfileModal(); });
 
-// ══════════ EDIT PROFILE (max 3 times) ══════════
-async function openEditProfileModal() {
-  closeUserDropdown();
-  const fb = window._firebase;
-  if (!fb || !window.currentUser) return;
-  try {
-    const snap = await fb.getDoc(fb.doc(fb.db, 'users', window.currentUser.uid));
-    const data = snap.exists() ? snap.data() : {};
-    const editCount = data.profileEditCount || 0;
-    const remaining = 3 - editCount;
-    if (remaining <= 0) {
-      showToast('❌ You have used all 3 profile edits. Contact the librarian for changes.');
-      return;
-    }
-    document.getElementById('epName').value = data.name || window.currentUser.displayName || '';
-    document.getElementById('epUSN').value = data.usn || '';
-    document.getElementById('epBranch').value = data.branch || '';
-    document.getElementById('epSemester').value = data.semester || '';
-    const note = document.getElementById('editRemainingNote');
-    note.textContent = `${remaining} edit${remaining!==1?'s':''} remaining.`;
-    note.style.color = remaining === 1 ? '#c0392b' : (remaining === 2 ? '#e67e22' : '#27ae60');
-    document.getElementById('editProfileError').classList.remove('show');
-    document.getElementById('editProfileModal').classList.add('open');
-  } catch(e) { showToast('Error loading profile.'); }
+function closeProfileModal() {
+  document.getElementById('profileModal').classList.remove('open');
 }
 
-function closeEditProfileModal() {
-  document.getElementById('editProfileModal').classList.remove('open');
-}
-
-async function saveEditProfile() {
-  const fb = window._firebase;
-  if (!fb || !window.currentUser) return;
-  const name = document.getElementById('epName').value.trim();
-  const usn = document.getElementById('epUSN').value.trim().toUpperCase();
-  const branch = document.getElementById('epBranch').value;
-  const semester = document.getElementById('epSemester').value;
-  const errEl = document.getElementById('editProfileError');
-  if (!name || !usn || !branch || !semester) {
-    errEl.textContent = 'All fields are required.'; errEl.classList.add('show'); return;
-  }
-  try {
-    const userRef = fb.doc(fb.db, 'users', window.currentUser.uid);
-    const snap = await fb.getDoc(userRef);
-    const data = snap.exists() ? snap.data() : {};
-    const editCount = data.profileEditCount || 0;
-    if (editCount >= 3) {
-      errEl.textContent = 'You have used all 3 profile edits.'; errEl.classList.add('show'); return;
-    }
-    await fb.setDoc(userRef, { name, usn, branch, semester, profileEditCount: editCount + 1 }, { merge: true });
-    await fb.updateProfile(fb.auth.currentUser, { displayName: name });
-    // Update header display
-    document.getElementById('userName').textContent = name;
-    document.getElementById('dropdownName').textContent = name;
-    const usnEl = document.getElementById('userUSNDisplay');
-    if (usnEl) { usnEl.textContent = usn; usnEl.style.display = 'block'; }
-    closeEditProfileModal();
-    showToast(`✅ Profile updated! ${2 - editCount} edit${(2-editCount)!==1?'s':''} remaining.`);
-  } catch(e) { errEl.textContent = 'Error saving. Try again.'; errEl.classList.add('show'); }
-}
-
-document.getElementById('editProfileModal').addEventListener('click', function(e){ if(e.target===this) closeEditProfileModal(); });
-
-// ══════════ GO HOME (logo click) ══════════
-function goHome() {
-  if (window.currentUserRole === 'student') {
-    switchView('student');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  } else if (window.currentUserRole === 'librarian') {
-    switchView('admin');
+// ══════════ LOGO CLICK — HOME ══════════
+function handleLogoClick() {
+  if (window.currentUser) {
+    const role = window.currentUserRole || 'student';
+    switchView(role === 'librarian' ? 'admin' : 'student');
+    showToast('🏠 Back to Home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } else {
-    window.location.reload();
+    location.reload();
   }
 }
 
-// ══════════ NOTIFICATION SYSTEM ══════════
-let _notifications = [];
-
-function addNotification(msg, type) {
-  _notifications.unshift({ msg, type, time: new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) });
-  if (_notifications.length > 20) _notifications.pop();
-  updateNotifBell();
-  renderNotifPanel();
-}
-
-function updateNotifBell() {
-  const dot = document.getElementById('notifDot');
-  if (dot) dot.classList.toggle('show', _notifications.length > 0);
-}
-
-function toggleNotifPanel() {
-  const panel = document.getElementById('notifPanel');
-  if (!panel) return;
-  const isOpen = panel.style.display !== 'none';
-  if (isOpen) { closeNotifPanel(); } else { panel.style.display = 'block'; renderNotifPanel(); }
-}
-
-function closeNotifPanel() {
-  const panel = document.getElementById('notifPanel');
-  if (panel) panel.style.display = 'none';
-}
-
-function renderNotifPanel() {
-  const list = document.getElementById('notifList');
-  if (!list) return;
-  if (!_notifications.length) {
-    list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:0.84rem">No notifications yet.</div>';
-    return;
-  }
-  const colorMap = { info: '#2980b9', success: '#27ae60', warn: '#e67e22', error: '#c0392b' };
-  list.innerHTML = _notifications.map(n => `
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start">
-      <span style="width:8px;height:8px;border-radius:50%;background:${colorMap[n.type]||colorMap.info};flex-shrink:0;margin-top:5px"></span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:0.83rem;color:var(--ink);line-height:1.4">${n.msg}</div>
-        <div style="font-size:0.68rem;color:var(--muted);margin-top:2px">${n.time}</div>
-      </div>
-    </div>`).join('');
-}
-
-function clearAllNotifs() {
-  _notifications = [];
-  updateNotifBell();
-  renderNotifPanel();
-}
-
-// Close notification panel on outside click
-document.addEventListener('click', e => {
-  if (!e.target.closest('#notifPanel') && !e.target.closest('#notifBell')) closeNotifPanel();
-});
-
-// ══════════ PUSH NOTIFICATIONS (Web Notifications API) ══════════
+// ══════════ NOTIFICATIONS (Browser Push API) ══════════
 function requestNotificationPermission() {
   if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') return;
-  if (Notification.permission !== 'denied') {
-    Notification.requestPermission().then(permission => {
-      if (permission === 'granted') {
-        showToast('🔔 Notifications enabled!');
-      }
-    });
-  }
+  if (Notification.permission === 'denied') return;
+  Notification.requestPermission().then(perm => {
+    if (perm === 'granted') {
+      showToast('🔔 Notifications enabled! You\'ll be alerted on book updates.');
+    }
+  });
 }
 
-function sendPushNotification(title, body) {
+function sendBrowserNotification(title, body) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
-    new Notification(title, {
+    const n = new Notification(title, {
       body,
       icon: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
-      badge: 'https://collegesdirectory.in/World/MasterAdmin/College-Master/College_Logo/Logo-303131703.png',
       tag: 'kit-library-' + Date.now()
     });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), 8000);
   } catch(e) { console.warn('Notification error:', e); }
 }
+
 
 function scrollToMyBooks() {
   switchView('student');
@@ -2714,17 +2611,19 @@ function renderStudentGrid() {
 
   grid.innerHTML = filtered.map(b => {
     const isMine = myIssuedBookIds.has(b.id);
-    const isPending = window._pendingReturnBookIds && window._pendingReturnBookIds.has(b.id);
+    const isPendingReturn = window._pendingReturnBookIds && window._pendingReturnBookIds.has(b.id);
     const isPendingIssue = window._pendingIssueBookIds && window._pendingIssueBookIds.has(b.id);
     let action = '';
     if (isMine) {
-      const returnBtn = isPending
+      const returnBtn = isPendingReturn
         ? `<button class="btn btn-sm btn-warn" disabled style="opacity:0.75">⏳ Return Pending…</button>`
         : `<button class="btn btn-sm btn-success" onclick="returnBook(${b.id})">📥 Return</button>`;
       action = `${returnBtn}<span class="my-issued-tag">✓ Yours</span>`;
     }
-    else if (isPendingIssue) action = `<button class="btn btn-sm btn-warn" disabled style="opacity:0.75">⏳ Request Pending…</button>`;
-    else if (b.status==='available') action = `<button class="btn btn-sm btn-blue" onclick="issueBook(${b.id})">📤 Request Book</button>`;
+    else if (isPendingIssue) {
+      action = `<button class="btn btn-sm btn-warn" disabled style="opacity:0.75">⏳ Request Pending…</button>`;
+    }
+    else if (b.status==='available') action = `<button class="btn btn-sm btn-blue" onclick="issueBook(${b.id})">📤 Issue to Me</button>`;
     return `
       <div class="book-card">
         <span class="book-card-shelf">${b.shelf}</span>
