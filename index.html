@@ -2608,7 +2608,7 @@ async function requestNotificationPermission() {
 
   try {
     // Register sw.js — use relative path so it works on GitHub Pages
-    const swPath = (location.pathname.replace(/\/[^/]*$/, '') || '') + '/sw.js';
+    const swPath = (location.pathname.replace(/\/[^/]*$/, '') || '') + '/firebase-messaging-sw.js';
     const swReg = await navigator.serviceWorker.register(swPath);
     console.log('✅ Service worker registered:', swReg.scope);
 
